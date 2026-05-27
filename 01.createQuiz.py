@@ -7,12 +7,12 @@ from groq import Groq
 import json
 from streamlit_oauth import OAuth2Component
 from supabase import create_client, Client
+import jwt  # Thư viện bảo mật giải mã Token chuyên dụng
 
 # --- 1. CẤU HÌNH KẾT NỐI HỆ THỐNG (Đọc ngầm hoàn toàn từ Secrets) ---
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
 GOOGLE_CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET")
-REDIRECT_URI = st.secrets.get("REDIRECT_URI")
 SUPABASE_URL = st.secrets.get("SUPABASE_URL")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
 
@@ -44,10 +44,10 @@ if "auth" not in st.session_state:
     st.title("⚡ Hệ thống Học tiếng Anh Edu-Stay AI")
     st.caption("Vui lòng xác thực tài khoản để bắt đầu bài học nghe hiểu.")
     
-    # Nút bấm đăng nhập
+    # 🛠️ FIX 1: Ép cố định redirect_uri về URL thương hiệu chuẩn
     result = oauth2.authorize_button(
         name="🔑 Đăng nhập bằng Gmail để bắt đầu học",
-        redirect_uri=REDIRECT_URI,
+        redirect_uri="https://eng-learning.streamlit.app/",
         scope="openid email profile",
         key="google_auth"
     )
@@ -55,10 +55,9 @@ if "auth" not in st.session_state:
     if result and "token" in result:
         st.session_state["auth"] = result
         
-        # Giải mã lấy thông tin Profile từ ID Token của Google
+        # 🛠️ FIX 2: Sử dụng PyJWT bóc tách thông tin an toàn, không lo lỗi JSON decoder
         id_token = result["token"]["id_token"]
-        # Phân tách chuỗi JWT cơ bản để lấy thông tin user nhanh không cần thư viện bổ sung
-        payload = json.loads(re.sub(r'==$', '', id_token.split('.')[1] + '==').encode('utf-8'))
+        payload = jwt.decode(id_token, options={"verify_signature": False})
         
         user_id = payload.get("sub")
         email = payload.get("email")
@@ -74,7 +73,7 @@ if "auth" not in st.session_state:
                     "full_name": full_name,
                     "avatar_url": avatar_url
                 }
-                # Sử dụng tính năng upsert (Nếu chưa có thì thêm mới, nếu có rồi thì cập nhật ngày đăng nhập)
+                # Sử dụng tính năng upsert (Nếu chưa có thì thêm mới, nếu có rồi thì cập nhật)
                 supabase.table("users_profile").upsert(user_data).execute()
             except Exception as db_err:
                 st.warning(f"Lưu lịch sử đăng nhập lỗi nhẹ: {db_err}")
@@ -83,9 +82,9 @@ if "auth" not in st.session_state:
 
 else:
     # --- INTERFACE SAU KHI ĐĂNG NHẬP THÀNH CÔNG ---
-    # Phục hồi dữ liệu người dùng từ Session
+    # 🛠️ FIX 2B: Giải mã đồng bộ cho phần hiển thị giao diện học viên
     id_token = st.session_state["auth"]["token"]["id_token"]
-    user_profile = json.loads(re.sub(r'==$', '', id_token.split('.')[1] + '==').encode('utf-8'))
+    user_profile = jwt.decode(id_token, options={"verify_signature": False})
     
     # Hiển thị thanh Sidebar thông tin học viên
     st.sidebar.image(user_profile.get("picture", ""), width=60)
@@ -173,7 +172,7 @@ else:
                 """
                 
                 chat_completion = client.chat.completions.create(
-                    model="llama-3.1-8b-instant",  # Cập nhật model thế hệ mới thay bản cũ đã đóng
+                    model="llama-3.1-8b-instant",  
                     messages=[
                         {"role": "system", "content": "You are a backend server that outputs strictly JSON. No markdown code blocks."},
                         {"role": "user", "content": prompt}
