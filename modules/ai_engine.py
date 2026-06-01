@@ -27,7 +27,7 @@ def transcribe_audio_with_whisper(audio_url: str) -> str:
     return transcript_text
 
 def generate_quiz_from_transcript(transcript_text: str) -> list:
-    """Gọi mô hình Llama-3.1-8b-instant thiết lập cấu trúc đề trắc nghiệm chuẩn JSON"""
+    """Gọi mô hình Llama-3.1-8b-instant thiết lập cấu trúc đề trắc nghiệm chuẩn JSON mới"""
     prompt = f"""
     Based on the following English transcript, generate exactly 10 multiple-choice questions to test listening comprehension.
     You MUST reply strictly with a JSON object containing a "quiz" key, which holds an array of 10 questions.
@@ -36,11 +36,11 @@ def generate_quiz_from_transcript(transcript_text: str) -> list:
     {{
         "quiz": [
             {{
-                "id": 1,
+                "question_number": 1,
                 "question": "Question text?",
                 "options": {{"A": "Opt 1", "B": "Opt 2", "C": "Opt 3", "D": "Opt 4"}},
-                "correct": "A",
-                "explain": "Giải thích chi tiết đáp án bằng tiếng Việt."
+                "correct_answer": "A",
+                "explanation": "Giải thích chi tiết đáp án bằng tiếng Việt."
             }}
         ]
     }}

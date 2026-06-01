@@ -8,7 +8,7 @@ def render_login_screen():
     st.title("⚡ Hệ thống Học tiếng Anh Edu-Stay AI")
     st.caption("Vui lòng xác thực tài khoản để bắt đầu bài học nghe hiểu.")
     # 2. In log ra console (Terminal) để bạn kiểm tra
-    print("👉 Debug local - redirect_uri hiện tại: " + st.secrets["REDIRECT_URI"])
+    #print("👉 Debug local - redirect_uri hiện tại: " + st.secrets["REDIRECT_URI"])
     
     result = oauth2.authorize_button(
         name="🔑 Đăng nhập bằng Gmail để bắt đầu học",
