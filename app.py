@@ -7,7 +7,7 @@ from modules.ai_engine import transcribe_audio_with_whisper, generate_quiz_from_
 # Thiết lập cấu hình nền tảng trang
 st.set_page_config(page_title="Edu-Stay AI Quiz Platform", page_icon="⚡", layout="centered")
 
-# --- INJECT DESIGN SYSTEM (MILESTONE 0 & MILESTONE 2 ĐỒNG BỘ) ---
+# --- INJECT DESIGN SYSTEM (ĐỒNG BỘ M0, M2 & NÂNG CẤP M3) ---
 st.markdown("""
 <style>
     /* 1. Thiết lập giao diện Dark Mode toàn ứng dụng */
@@ -61,6 +61,34 @@ st.markdown("""
         border: 1px solid rgba(255, 255, 255, 0.1);
     }
     
+    /* 5. Khung cuộn Transcript chuyên dụng cho Milestone 3 */
+    .transcript-container {
+        max-height: 250px !important;
+        overflow-y: auto !important;
+        padding: 15px !important;
+        background: rgba(0, 0, 0, 0.4) !important;
+        border-radius: 8px !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        font-size: 15px !important;
+        line-height: 1.6 !important;
+        color: #CCCCCC !important;
+    }
+    
+    /* Custom thanh cuộn của Transcript */
+    .transcript-container::-webkit-scrollbar {
+        width: 6px;
+    }
+    .transcript-container::-webkit-scrollbar-thumb {
+        background: rgba(0, 242, 254, 0.3);
+        border-radius: 4px;
+    }
+    
+    /* Custom giao diện Audio Player nhúng của Streamlit */
+    div.stAudio > audio {
+        width: 100% !important;
+        border-radius: 10px !important;
+    }
+    
     h1 {
         background: linear-gradient(135deg, #00F2FE 0%, #4FACFE 100%);
         -webkit-background-clip: text;
@@ -85,7 +113,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- KIỂM TRA ĐĂNG NHẬP (GATEKEEPER) ---
+# --- KIỂM TRA ĐĂNG NHẬP (GATEKEEPER - GIỮ NGUYÊN LOGIC GỐC M0) ---
 if "auth" not in st.session_state:
     st.markdown('<div class="glass-card" style="margin-top: 50px; text-align: center;">', unsafe_allow_html=True)
     render_login_screen()
@@ -102,7 +130,7 @@ else:
         st.session_state["mock_learned_titles"] = {"6 Minute English: Innovation", "6 Minute English: Technology"}
 
     # ==========================================
-    # KHÔNG GIAN 1: DANH SÁCH KHÁM PHÁ SHOW & EPISODE LIST
+    # GIAO DIỆN 1: DANH SÁCH KHÁM PHÁ SHOW & EPISODE LIST (MILESTONE 2)
     # ==========================================
     if st.session_state["selected_episode"] is None:
         st.title("⚡ Khám phá nội dung Podcast")
@@ -111,7 +139,7 @@ else:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         show_url_input = st.text_input(
             "Nhập Link Show của kênh Podcast (Ví dụ: Kênh 6 Minute English):",
-            value="https://podcasts.apple.com/vn/podcast/6-minute-english/id262026944"
+            value="https://podcasts.apple.com/vn/podcast/5-minute-english-talk/id1820739470"
         )
         
         if st.button("🔍 Quét danh sách bài học"):
@@ -167,12 +195,16 @@ else:
                 # Nút bấm chuyển tiếp hướng người dùng sang giao diện chi tiết của tập phim
                 if st.button("📖 Vào học tập này", key=f"btn_{ep['title']}"):
                     st.session_state["selected_episode"] = ep
+                    # Dọn dẹp cache cũ khi chuyển tập để ép chạy xử lý tập mới hoàn toàn
+                    if "current_guid" in st.session_state and st.session_state["current_guid"] != ep["title"]:
+                        if 'groq_transcript' in st.session_state: del st.session_state['groq_transcript']
+                        if 'groq_quiz_data' in st.session_state: del st.session_state['groq_quiz_data']
                     st.rerun()
                     
             st.markdown('</div>', unsafe_allow_html=True)
 
     # ==========================================
-    # KHÔNG GIAN 2: TRANG CHI TIẾT BÀI TẬP (DETAIL PAGE)
+    # GIAO DIỆN 2: TRANG CHI TIẾT BÀI TẬP (DETAIL PAGE - NÂNG CẤP MILESTONE 3)
     # ==========================================
     else:
         current_ep = st.session_state["selected_episode"]
@@ -184,7 +216,7 @@ else:
         st.title("📖 Trang Chi Tiết Bài Học")
         st.markdown(f"<h3 class='neon-text-teal'>{current_ep['title']}</h3>", unsafe_allow_html=True)
 
-        # --- ĐỒNG BỘ LOGIC XỬ LÝ VÀ CHUẨN HOÁ CẤU TRÚC GỐC CỦA HỆ THỐNG ---
+        # --- LUỒNG XỬ LÝ AI NGẦM ---
         if "current_guid" not in st.session_state or st.session_state["current_guid"] != current_ep["title"]:
             with st.status("Hệ thống đang nạp âm thanh và xử lý nội dung AI...", expanded=True) as status:
                 try:
@@ -192,6 +224,9 @@ else:
                     if not audio_url:
                         st.error("Không thể bóc tách link âm thanh từ tập podcast này.")
                         st.stop()
+                    
+                    # Lưu link audio vào session_state phục vụ trình phát nhúng st.audio
+                    st.session_state['current_audio_url'] = audio_url
                         
                     transcript_text = transcribe_audio_with_whisper(audio_url)
                     quiz_data = generate_quiz_from_transcript(transcript_text)
@@ -205,13 +240,38 @@ else:
                     st.error(f"Chi tiết: {e}")
                     st.stop()
 
-        # Hiển thị Transcript nội dung văn bản bài học
+        # ----------------------------------------------------
+        # THÀNH PHẦN 1: EMBEDDED PLAYER (TRÌNH PHÁT NHÚNG TRÊN CÙNG)
+        # ----------------------------------------------------
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.subheader("📝 Văn bản bài nghe (Transcript)")
-        st.write(st.session_state['groq_transcript'])
+        st.subheader("🎧 Trình phát Audio trực tuyến")
+        if 'current_audio_url' in st.session_state and st.session_state['current_audio_url']:
+            st.audio(st.session_state['current_audio_url'])
+        else:
+            audio_url_fallback = get_audio_url_from_apple(current_ep["apple_url"])
+            st.session_state['current_audio_url'] = audio_url_fallback
+            st.audio(audio_url_fallback)
+        st.caption("Trải nghiệm đa nhiệm: Nghe trực tiếp, cuộn văn bản và chọn đáp án trắc nghiệm song song không cần chuyển tab.")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Render form bộ câu hỏi trắc nghiệm
+        # ----------------------------------------------------
+        # THÀNH PHẦN 2: TRANSCRIPT VĂN BẢN (KHUNG SCROLL Ở GIỮA)
+        # ----------------------------------------------------
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.subheader("📝 Văn bản bài nghe (Transcript)")
+        
+        # Tạo khung bao cố định chiều cao bằng CSS token để hỗ trợ tự động cuộn (Best-effort scroll)
+        transcript_html = f"""
+        <div class="transcript-container">
+            {st.session_state['groq_transcript']}
+        </div>
+        """
+        st.markdown(transcript_html, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # ----------------------------------------------------
+        # THÀNH PHẦN 3: ĐỀ THI AI QUIZ TRẮC NGHIỆM (Ở DƯỚI CÙNG)
+        # ----------------------------------------------------
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.subheader("🎯 Bài kiểm tra trắc nghiệm nâng cao")
         
@@ -237,11 +297,11 @@ else:
                 
             st.markdown(f"""
             <div style="background: rgba(0, 242, 254, 0.1); padding: 15px; border-radius: 12px; border: 1px dashed #00F2FE; text-align: center;">
-                <span style="font-size: 18px; font-weight: 700; color: #00F2FE;">📊 Kết quả bài làm: {score} / 10 Câu Đúng</span>
+                <span style="font-size: 18px; font-weight: 700; color: #00F2FE;">📊 Kết quả bài làm: {score} / {len(st.session_state['groq_quiz_data'])} Câu Đúng</span>
             </div>
             """, unsafe_allow_html=True)
             
-            # Ghi nhận tiêu đề này vào danh sách đã học để hiển thị badge ra bên ngoài danh mục
+            # Ghi nhận tiêu đề này vào danh sách đã học để cập nhật hiển thị badge
             st.session_state["mock_learned_titles"].add(current_ep["title"])
             
         st.markdown('</div>', unsafe_allow_html=True)
