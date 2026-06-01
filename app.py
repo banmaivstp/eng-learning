@@ -156,7 +156,7 @@ else:
     if 'groq_quiz_data' in st.session_state:
         # Transcript và Đề bài được đưa vào một vùng riêng biệt có chiều sâu
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        with st.expander("编️ Nhấp vào đây để xem toàn bộ nội dung bài đọc (Transcript)"):
+        with st.expander("Nhấp vào đây để xem toàn bộ nội dung bài đọc (Transcript)"):
             st.write(st.session_state['groq_transcript'])
         st.markdown('</div>', unsafe_allow_html=True)
             
