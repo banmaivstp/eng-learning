@@ -1,48 +1,62 @@
 import streamlit as st
-import jwt
-from config import oauth2
+from streamlit_oauth import OAuth2Component
+from config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 from modules.database import upsert_user_profile
 
+# Khởi tạo OAuth2
+oauth2 = OAuth2Component(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, "", "", "", "")
+
 def render_login_screen():
-    """Hiển thị màn hình đăng nhập ban đầu"""
-    st.title("⚡ Hệ thống Học tiếng Anh Edu-Stay AI")
-    st.caption("Vui lòng xác thực tài khoản để bắt đầu bài học nghe hiểu.")
-    
-    result = oauth2.authorize_button(
-        name="🔑 Đăng nhập bằng Gmail để bắt đầu học",
-        redirect_uri="https://eng-learning.streamlit.app/",
-        scope="openid email profile",
-        key="google_auth"
-    )
-    
+    st.markdown("""
+    <div class="login-container">
+        <div class="login-logo">⚡ Edu-Stay AI</div>
+        <div class="login-tagline">Hệ thống luyện nghe Tiếng Anh · Powered by Groq & Whisper</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Căn giữa nút login
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        redirect_uri = "https://eng-learning.streamlit.app/"
+        result = oauth2.authorize_button(
+            name="🔑 Đăng nhập bằng Gmail",
+            redirect_uri=redirect_uri,
+            scope="openid email profile",
+            key="google_auth",
+        )
+
     if result and "token" in result:
-        st.session_state["auth"] = result
-        
-        # Giải mã lấy thông tin Profile an toàn qua thư viện PyJWT
-        id_token = result["token"]["id_token"]
-        payload = jwt.decode(id_token, options={"verify_signature": False})
-        
-        user_data = {
-            "id": payload.get("sub"),
-            "email": payload.get("email"),
-            "full_name": payload.get("name"),
-            "avatar_url": payload.get("picture")
-        }
-        
-        # Đồng bộ trực tiếp vào database
-        upsert_user_profile(user_data)
-        st.rerun()
+        user_info = result.get("user_info")
+        if user_info:
+            st.session_state["auth"] = result
+            st.session_state["user_info"] = user_info
+            upsert_user_profile(user_info)
+            st.rerun()
 
 def render_sidebar_profile():
-    """Hiển thị thông tin học viên ở góc màn hình sau khi login"""
-    id_token = st.session_state["auth"]["token"]["id_token"]
-    user_profile = jwt.decode(id_token, options={"verify_signature": False})
-    
-    st.sidebar.image(user_profile.get("picture", ""), width=60)
-    st.sidebar.markdown(f"Học viên: **{user_profile.get('name')}**")
-    st.sidebar.caption(f"Email: {user_profile.get('email')}")
-    
-    if st.sidebar.button("🚪 Đăng xuất"):
-        del st.session_state["auth"]
-        # Hãy xóa các session_state cũ về bài học tại đây nếu cần dọn dẹp bộ nhớ
-        st.rerun()
+    if "user_info" in st.session_state:
+        user = st.session_state["user_info"]
+
+        # Avatar
+        pic = user.get("picture")
+        if pic:
+            st.sidebar.image(pic, width=64)
+
+        # Name & email
+        st.sidebar.markdown(
+            f'<div class="sidebar-name">{user.get("name", "")}</div>'
+            f'<div class="sidebar-email">{user.get("email", "")}</div>',
+            unsafe_allow_html=True
+        )
+        st.sidebar.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
+
+        # Học viên label
+        st.sidebar.markdown(
+            '<span style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.08em;">Học viên</span>',
+            unsafe_allow_html=True
+        )
+
+        if st.sidebar.button("🚪 Đăng xuất"):
+            del st.session_state["auth"]
+            del st.session_state["user_info"]
+            st.rerun()
