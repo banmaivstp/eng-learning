@@ -7,10 +7,14 @@ def render_login_screen():
     """Hiển thị màn hình đăng nhập ban đầu"""
     st.title("⚡ Hệ thống Học tiếng Anh Edu-Stay AI")
     st.caption("Vui lòng xác thực tài khoản để bắt đầu bài học nghe hiểu.")
+    # 2. In log ra console (Terminal) để bạn kiểm tra
+    print("👉 Debug local - redirect_uri hiện tại: " + st.secrets["REDIRECT_URI"])
     
     result = oauth2.authorize_button(
         name="🔑 Đăng nhập bằng Gmail để bắt đầu học",
-        redirect_uri="https://eng-learning.streamlit.app/",
+        #redirect_uri="https://eng-learning.streamlit.app/",
+        # Lấy redirect_uri động theo môi trường hiện tại
+        redirect_uri = st.secrets["REDIRECT_URI"],
         scope="openid email profile",
         key="google_auth"
     )
@@ -41,6 +45,7 @@ def render_sidebar_profile():
     st.sidebar.image(user_profile.get("picture", ""), width=60)
     st.sidebar.markdown(f"Học viên: **{user_profile.get('name')}**")
     st.sidebar.caption(f"Email: {user_profile.get('email')}")
+   
     
     if st.sidebar.button("🚪 Đăng xuất"):
         del st.session_state["auth"]
