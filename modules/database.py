@@ -99,3 +99,48 @@ def save_learning_history(user_id: str, episode_id: str, score: int, duration_se
             
     except Exception as streak_err:
         print(f"[DEBUG LỖI] Không thể cập nhật Streak: {streak_err}")
+        
+# =====================================================================
+# MILESTONE 6: CƠ CHẾ CACHE QUIZ & TRANSCRIPT TỪ DATABASE
+# =====================================================================
+def get_cached_episode_data(episode_id: str) -> dict:
+    """
+    Kiểm tra xem tập bài học đã được xử lý qua AI và lưu cache chưa.
+    Trả về dict chứa audio_url, transcript và quiz_json nếu có, ngược lại trả về None.
+    """
+    print(f"\n[DEBUG CACHE] >>>>>>>>>> BẮT ĐẦU: Kiểm tra Cache cho Episode ID: {episode_id} <<<<<<<<<<", flush=True)
+    if not supabase:
+        print("[DEBUG CACHE] ⚠️ Thất bại: Kết nối Supabase chưa được khởi tạo (supabase is None).", flush=True)
+        return None
+        
+    try:
+        start_time = datetime.now()
+        res = supabase.table("episodes").select("audio_url, transcript, quiz_json").eq("id", str(episode_id)).execute()
+        duration = (datetime.now() - start_time).total_seconds()
+        
+        if res.data:
+            record = res.data[0]
+            transcript = record.get("transcript")
+            quiz_json = record.get("quiz_json")
+            
+            # Điều kiện trúng cache: Phải có cả transcript và dữ liệu quiz_json
+            if transcript and quiz_json:
+                print(f"[DEBUG CACHE] 🎉 HIT (Trúng Cache)! Tìm thấy dữ liệu trong DB. Thời gian truy vấn: {duration:.4f} giây.", flush=True)
+                print(f"[DEBUG CACHE] - Độ dài Transcript: {len(transcript)} ký tự.", flush=True)
+                print(f"[DEBUG CACHE] - Kiểu dữ liệu Quiz ẩn trong DB: {type(quiz_json)}", flush=True)
+                print("[DEBUG CACHE] >>>>>>>>>> KẾT THÚC: Kiểm tra Cache thành công <<<<<<<<<<\n", flush=True)
+                return {
+                    "audio_url": record.get("audio_url"),
+                    "transcript": transcript,
+                    "quiz_json": quiz_json
+                }
+            else:
+                print(f"[DEBUG CACHE] 💨 MISS (Trượt Cache): Bản ghi tồn tại nhưng transcript hoặc quiz_json bị rỗng.", flush=True)
+        else:
+            print(f"[DEBUG CACHE] 💨 MISS (Trượt Cache): Không tìm thấy bản ghi nào khớp với ID {episode_id} trong bảng 'episodes'.", flush=True)
+            
+    except Exception as e:
+        print(f"[DEBUG CACHE 🚨 LỖI HỆ THỐNG]: Không thể truy vấn bảng episodes để lấy dữ liệu cache: {str(e)}", flush=True)
+        
+    print("[DEBUG CACHE] >>>>>>>>>> KẾT THÚC: Luồng kiểm tra trả về trạng thái không có cache <<<<<<<<<<\n", flush=True)
+    return None
