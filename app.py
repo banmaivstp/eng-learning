@@ -82,13 +82,12 @@ else:
         if st.button("🔍 Quét danh sách bài học"):
             if input_show_url:
                 with st.spinner("Đang đồng bộ hóa dữ liệu từ RSS Feed..."):
-                    # Import hàm tại đây để tránh lỗi vòng lặp import chéo giữa các modules
                     from modules.ai_engine import transcribe_audio_with_whisper, generate_quiz_from_transcript
                     
                     show_data = get_episode_list_from_show(input_show_url)
                     if show_data:
                         try:
-                            # 1. Thử ghi nhận thông tin kênh Podcast vào bảng `shows` (Cú pháp ngắn gọn sạch sẽ)
+                            # 1. Ghi nhận thông tin kênh Podcast vào bảng `shows`
                             try:
                                 show_db = supabase.table("shows").upsert({
                                     "apple_show_url": input_show_url.strip(),
@@ -104,7 +103,7 @@ else:
                             show_id = show_db.data[0]["id"]
                             st.session_state['db_show_id'] = show_id
                             
-                            # 2. Thử ghi nhận danh sách tập vào bảng `episodes`
+                            # 2. Ghi nhận danh sách tập vào bảng `episodes`
                             processed_episodes = []
                             for ep in show_data['episodes']:
                                 try:
@@ -113,8 +112,6 @@ else:
                                         "title": ep["title"],
                                         "audio_url": ep["apple_url"]
                                     }, on_conflict="show_id,title").execute()
-                                    
-                                    
                                 except Exception as ep_err:
                                     raise Exception(f"Lỗi ghi dữ liệu vào bảng 'episodes': {ep_err}")
                                 
@@ -175,7 +172,6 @@ else:
                     st.session_state['groq_quiz_data'] = quiz_data
                     
                     try:
-                        # Cập nhật thông tin transcript và quiz vào bảng episodes bằng tên gọn
                         supabase.table("episodes").update({
                             "audio_url": real_audio_url,
                             "transcript": transcript,
@@ -221,6 +217,7 @@ else:
                     st.markdown(f'<div class="explain-box"><strong>💡 AI Giải thích:</strong><br/>{item["explanation"]}</div>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
                 
+            # --- KHỐI ĐIỀU KHIỂN NỘP BÀI CHUẨN THỤT LỀ THEO PHÂN CẤP SƠ ĐỒ ---
             if not st.session_state['submitted_quiz']:
                 if st.button("💯 Nộp bài và xem kết quả"):
                     start_time = st.session_state.get('quiz_start_time', time.time())
@@ -230,29 +227,53 @@ else:
                     for item in st.session_state['groq_quiz_data']:
                         q_id = item['question_number']
                         st.session_state[f"user_ans_stored_{q_id}"] = user_answers[q_id]
-                        if user_answers[q_id] == item['correct_answer']: score += 1
+                        if user_answers[q_id] == item['correct_answer']: 
+                            score += 1
                     
                     st.session_state['last_score'] = score
                     
+                    print("\n[DEBUG APP] >>>>>>>>>> BẤT ĐẦU: Event kích hoạt Nộp bài <<<<<<<<<<", flush=True)
                     try:
                         auth_data = st.session_state.get("auth", {})
-                        token_data = auth_data.get("token", {})
-                        id_token = token_data.get("id_token") if isinstance(token_data, dict) else auth_data.get("id_token")
+                        print(f"[DEBUG APP] 📊 Chi tiết st.session_state['auth'] thu thập được:\n{auth_data}", flush=True)
                         
-                        if id_token:
-                            user_profile = jwt.decode(id_token, options={"verify_signature": False})
-                            user_id = user_profile.get("sub")
+                        user_id = None
+                        if hasattr(auth_data, 'user') and auth_data.user:
+                            user_id = auth_data.user.id
+                            print(f"[DEBUG APP] 🎯 [Cách 1] Lấy thành công từ Session Object User ID: {user_id}", flush=True)
+                        elif isinstance(auth_data, dict):
+                            user_id = auth_data.get("user", {}).get("id") or auth_data.get("id")
+                            print(f"[DEBUG APP] 🎯 [Cách 2] Lấy thành công từ Session Dict User ID: {user_id}", flush=True)
+                        
+                        if not user_id:
+                            print("[DEBUG APP] ⚠️ Cảnh báo: Cách 1 & 2 rỗng. Tiến hành bóc tách chuỗi Token JWT...", flush=True)
+                            token_data = auth_data.get("token", {}) if isinstance(auth_data, dict) else {}
+                            id_token = token_data.get("id_token") if isinstance(token_data, dict) else auth_data.get("id_token")
                             
-                            if user_id and current_ep.get("id"):
-                                # Đồng bộ truyền đúng UUID (current_ep["id"]) thay vì dùng text cũ
-                                save_learning_history(
-                                    user_id=user_id, 
-                                    episode_id=current_ep["id"], 
-                                    score=score, 
-                                    duration_seconds=duration_seconds
-                                )
-                    except Exception as db_err:
-                        st.error(f"💥 Lỗi lưu trữ lịch sử làm bài: {db_err}")
+                            print(f"[DEBUG APP] 🔑 Chuỗi id_token trích xuất: {id_token}", flush=True)
+                            if id_token:
+                                user_profile = jwt.decode(id_token, options={"verify_signature": False})
+                                user_id = user_profile.get("sub")
+                                print(f"[DEBUG APP] 🎯 [Cách 3] Giải mã JWT thành công. Khóa ngoại 'sub' = {user_id}", flush=True)
+
+                        if not user_id:
+                            print("[DEBUG APP] 🚨 THẤT BẠI HOÀN TOÀN: Không tìm thấy thông tin định danh người dùng!", flush=True)
+                            st.error("🚨 Không thể định danh học viên. Log lưu lịch sử bị hủy bỏ.")
+                        elif not current_ep.get("id"):
+                            print("[DEBUG APP] 🚨 THẤT BẠI: Biến current_ep['id'] bị rỗng!", flush=True)
+                            st.error("🚨 Lỗi dữ liệu tập Podcast: Không tìm thấy ID hợp lệ.")
+                        else:
+                            print(f"[DEBUG APP] 🚀 Kiểm tra hợp lệ! Đang chuyển giao tác vụ sang save_learning_history cho User: {user_id}", flush=True)
+                            save_learning_history(
+                                user_id=str(user_id), 
+                                episode_id=str(current_ep["id"]), 
+                                score=score, 
+                                duration_seconds=duration_seconds
+                            )
+                            
+                    except Exception as app_err:
+                        print(f"[DEBUG APP] 💥 LỖI PHÁT SINH tại luồng xử lý Nộp bài phía App: {str(app_err)}", flush=True)
+                    print("[DEBUG APP] >>>>>>>>>> KẾT THÚC: Luồng xử lý Event nộp bài bài tập <<<<<<<<<<\n", flush=True)
                         
                     st.session_state['submitted_quiz'] = True
                     st.rerun()

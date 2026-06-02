@@ -2,4 +2,6 @@
 .bk/
 __pycache__/
 *.pyc
+ .00_resource/~$dbStructure.xlsx
+
 

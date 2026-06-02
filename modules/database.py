@@ -7,12 +7,11 @@ def upsert_user_profile(user_data: dict):
     if supabase:
         try:
             profile_payload = {
-                "id": user_data["id"], # UUID từ auth
+                "id": str(user_data["id"]), 
                 "email": user_data["email"],
                 "full_name": user_data["full_name"],
                 "avatar_url": user_data["avatar_url"]
             }
-            # Sử dụng schema public tường minh để tránh lỗi định tuyến
             supabase.table("profiles").upsert(profile_payload).execute()
         except Exception as db_err:
             st.warning(f"Lưu thông tin profile lỗi nhẹ: {db_err}")
@@ -20,75 +19,83 @@ def upsert_user_profile(user_data: dict):
 def save_learning_history(user_id: str, episode_id: str, score: int, duration_seconds: int):
     """
     Lưu lịch sử làm bài vào public.learning_history và cập nhật chuỗi ngày học 
-    vào bảng public.user_streaks chuẩn định dạng UUID.
+    vào bảng public.user_streaks.
     """
     if not supabase:
         raise Exception("Kết nối cơ sở dữ liệu Supabase chưa được cấu hình!")
 
+    # Chuyển đổi các ID sang dạng chuỗi (Text) tường minh
+    user_id_str = str(user_id)
+    episode_id_str = str(episode_id)
+
     # --- 1. GHI LỊCH SỬ BÀI LÀM (learning_history) ---
-    # Chú ý: episode_id phải truyền vào chuỗi định dạng UUID hợp lệ lấy từ bảng episodes
-    history_data = {
-        "user_id": user_id,             
-        "episode_id": episode_id,     
-        "score": int(score),
-        "duration_seconds": int(duration_seconds),
-        "completed_at": datetime.now().isoformat()
-    }
-    
     try:
-        history_res = supabase.table("learning_history").insert(history_data).execute()
-        if not history_res.data:
-            raise Exception("Supabase không phản hồi dữ liệu sau khi chèn lịch sử.")
-    except Exception as err:
-        raise Exception(f"Lỗi chèn dữ liệu bảng public.learning_history: {err}")
+        supabase.table("learning_history").insert({
+            "user_id": user_id_str,
+            "episode_id": episode_id_str,
+            "score": score,
+            "duration_seconds": duration_seconds
+        }).execute()
+        print("[DEBUG] Đã lưu thành công vào learning_history")
+    except Exception as e:
+        print(f"[DEBUG LỖI] Không thể lưu learning_history: {e}")
+        raise e
 
-    # --- 2. XỬ LÝ CHUỖI NGÀY HỌC TẬP (user_streaks) ---
-    today_date = date.today().isoformat()
-    
+    # --- 2. TÍNH TOÁN VÀ CẬP NHẬT TỔNG ĐIỂM (profiles.total_score) ---
+    current_total_score = 0  # Dòng số 43 của bạn nằm ở đây, giờ đã an toàn ngoài khối try
     try:
-        # Lấy thông tin Streak hiện tại của User
-        streak_res = supabase.table("user_streaks").select("*").eq("user_id", user_id).execute()
+        profile_res = supabase.table("profiles").select("total_score").eq("id", user_id_str).execute()
+        if profile_res.data:
+            current_total_score = profile_res.data[0].get("total_score", 0)
         
-        current_streak = 0
-        longest_streak = 0
+        # Cộng dồn điểm mới và cập nhật lại vào bảng profiles
+        new_total_score = current_total_score + score
+        supabase.table("profiles").update({"total_score": new_total_score}).eq("id", user_id_str).execute()
+        print(f"[DEBUG] Đã cập nhật tổng điểm mới: {new_total_score}")
+    except Exception as score_err:
+        print(f"[DEBUG LỖI] Lỗi cập nhật điểm tích lũy: {score_err}")
+
+    # --- 3. CẬP NHẬT CHUỖI NGÀY HỌC (user_streaks) ---
+    try:
+        today_str = date.today().isoformat()
+        streak_res = supabase.table("user_streaks").select("*").eq("user_id", user_id_str).execute()
         
-        if streak_res.data:
-            streak_record = streak_res.data[0]
-            current_streak = streak_record.get("current_streak", 0) or 0
-            longest_streak = streak_record.get("longest_streak", 0) or 0
-            last_active_str = streak_record.get("last_active_date")
-            
-            if last_active_str:
-                last_active = date.fromisoformat(last_active_str)
-                delta_days = (date.today() - last_active).days
-                
-                if delta_days == 1:
-                    current_streak += 1  # Học tiếp tục ngày hôm sau
-                elif delta_days > 1:
-                    current_streak = 1   # Bị ngắt quãng chuỗi -> Reset về 1
-                # Nếu delta_days == 0 -> Giữ nguyên chuỗi ngày hiện tại
-            else:
-                current_streak = 1
+        if not streak_res.data:
+            # Nếu chưa từng có bản ghi streak, tạo mới mặc định ngày đầu tiên
+            supabase.table("user_streaks").insert({
+                "user_id": user_id_str,
+                "current_streak": 1,
+                "longest_streak": 1,
+                "last_active_date": today_str
+            }).execute()
         else:
-            current_streak = 1
-
-        # Cập nhật kỷ lục chuỗi ngày học dài nhất (longest_streak)
-        if current_streak > longest_streak:
-            longest_streak = current_streak
-
-        # Thực hiện lệnh Upsert vào bảng user_streaks
-        streak_payload = {
-            "user_id": user_id,
-            "current_streak": current_streak,
-            "longest_streak": longest_streak,
-            "last_active_date": today_date
-        }
-        
-        supabase.table("user_streaks").upsert(streak_payload).execute()
-        
-        # Hiển thị hiệu ứng chúc mừng thành tích học tập
-        if current_streak >= 1:
-            st.toast(f"🔥 Xuất sắc! Bạn đang giữ chuỗi {current_streak} ngày học liên tục.", icon="🚀")
+            streak_data = streak_res.data[0]
+            last_date_str = streak_data.get("last_active_date")
+            curr_streak = streak_data.get("current_streak", 0)
+            long_streak = streak_data.get("longest_streak", 0)
+            
+            if last_date_str:
+                last_active = datetime.strptime(last_date_str, "%Y-%m-%d").date()
+                days_diff = (date.today() - last_active).days
+                
+                if days_diff == 1:
+                    # Học liên tiếp ngày hôm sau -> Tăng streak
+                    curr_streak += 1
+                elif days_diff > 1:
+                    # Bị ngắt quãng ngày -> Reset về 1
+                    curr_streak = 1
+                # Nếu days_diff == 0 (học nhiều bài cùng ngày) -> Giữ nguyên streak
+            else:
+                curr_streak = 1
+                
+            if curr_streak > long_streak:
+                long_streak = curr_streak
+                
+            supabase.table("user_streaks").update({
+                "current_streak": curr_streak,
+                "longest_streak": long_streak,
+                "last_active_date": today_str
+            }).eq("user_id", user_id_str).execute()
             
     except Exception as streak_err:
-        st.warning(f"Không thể cập nhật chuỗi ngày học (user_streaks): {streak_err}")
+        print(f"[DEBUG LỖI] Không thể cập nhật Streak: {streak_err}")
