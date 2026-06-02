@@ -1,146 +1,457 @@
+import logging
+from datetime import date, datetime, timedelta
+
+import pandas as pd
 import streamlit as st
+
 from config import supabase
-from datetime import datetime, date
+
+logger = logging.getLogger("modules.database")
+
+
+# =====================================================
+# PROFILE
+# =====================================================
 
 def upsert_user_profile(user_data: dict):
-    """Đồng bộ thông tin đăng nhập Google của học viên vào bảng public.profiles"""
-    if supabase:
-        try:
-            profile_payload = {
-                "id": str(user_data["id"]), 
-                "email": user_data["email"],
-                "full_name": user_data["full_name"],
-                "avatar_url": user_data["avatar_url"]
-            }
-            supabase.table("profiles").upsert(profile_payload).execute()
-        except Exception as db_err:
-            st.warning(f"Lưu thông tin profile lỗi nhẹ: {db_err}")
+    """
+    Đồng bộ thông tin user vào bảng users_profile
+    """
 
-def save_learning_history(user_id: str, episode_id: str, score: int, duration_seconds: int):
-    """
-    Lưu lịch sử làm bài vào public.learning_history và cập nhật chuỗi ngày học 
-    vào bảng public.user_streaks.
-    """
     if not supabase:
-        raise Exception("Kết nối cơ sở dữ liệu Supabase chưa được cấu hình!")
+        return
 
-    # Chuyển đổi các ID sang dạng chuỗi (Text) tường minh
-    user_id_str = str(user_id)
-    episode_id_str = str(episode_id)
-
-    # --- 1. GHI LỊCH SỬ BÀI LÀM (learning_history) ---
     try:
-        supabase.table("learning_history").insert({
-            "user_id": user_id_str,
-            "episode_id": episode_id_str,
-            "score": score,
-            "duration_seconds": duration_seconds
-        }).execute()
-        print("[DEBUG] Đã lưu thành công vào learning_history")
+
+        payload = {
+            "id": str(user_data["id"]),
+            "email": user_data.get("email"),
+            "full_name": user_data.get("full_name"),
+            "avatar_url": user_data.get("avatar_url"),
+            "last_sign_in_at": datetime.utcnow().isoformat()
+        }
+
+        supabase.table(
+            "users_profile"
+        ).upsert(
+            payload
+        ).execute()
+
+        logger.info(
+            f"✅ User synced: {payload['email']}"
+        )
+
     except Exception as e:
-        print(f"[DEBUG LỖI] Không thể lưu learning_history: {e}")
-        raise e
 
-    # --- 2. TÍNH TOÁN VÀ CẬP NHẬT TỔNG ĐIỂM (profiles.total_score) ---
-    current_total_score = 0  # Dòng số 43 của bạn nằm ở đây, giờ đã an toàn ngoài khối try
-    try:
-        profile_res = supabase.table("profiles").select("total_score").eq("id", user_id_str).execute()
-        if profile_res.data:
-            current_total_score = profile_res.data[0].get("total_score", 0)
-        
-        # Cộng dồn điểm mới và cập nhật lại vào bảng profiles
-        new_total_score = current_total_score + score
-        supabase.table("profiles").update({"total_score": new_total_score}).eq("id", user_id_str).execute()
-        print(f"[DEBUG] Đã cập nhật tổng điểm mới: {new_total_score}")
-    except Exception as score_err:
-        print(f"[DEBUG LỖI] Lỗi cập nhật điểm tích lũy: {score_err}")
+        logger.exception(
+            f"upsert_user_profile error: {e}"
+        )
 
-    # --- 3. CẬP NHẬT CHUỖI NGÀY HỌC (user_streaks) ---
+        st.warning(
+            f"Lỗi lưu profile: {e}"
+        )
+
+
+# =====================================================
+# STREAK
+# =====================================================
+
+def update_streak(user_id: str):
+
+    if not supabase:
+        return
+
+    today = date.today()
+
     try:
-        today_str = date.today().isoformat()
-        streak_res = supabase.table("user_streaks").select("*").eq("user_id", user_id_str).execute()
-        
+
+        streak_res = (
+            supabase.table("user_streaks")
+            .select("*")
+            .eq("user_id", str(user_id))
+            .execute()
+        )
+
         if not streak_res.data:
-            # Nếu chưa từng có bản ghi streak, tạo mới mặc định ngày đầu tiên
-            supabase.table("user_streaks").insert({
-                "user_id": user_id_str,
+
+            payload = {
+                "user_id": str(user_id),
                 "current_streak": 1,
                 "longest_streak": 1,
-                "last_active_date": today_str
-            }).execute()
+                "last_active_date": today.isoformat()
+            }
+
+            supabase.table(
+                "user_streaks"
+            ).insert(
+                payload
+            ).execute()
+
+            return
+
+        record = streak_res.data[0]
+
+        current_streak = record.get(
+            "current_streak",
+            0
+        )
+
+        longest_streak = record.get(
+            "longest_streak",
+            0
+        )
+
+        last_active_date = record.get(
+            "last_active_date"
+        )
+
+        if not last_active_date:
+
+            current_streak = 1
+
         else:
-            streak_data = streak_res.data[0]
-            last_date_str = streak_data.get("last_active_date")
-            curr_streak = streak_data.get("current_streak", 0)
-            long_streak = streak_data.get("longest_streak", 0)
-            
-            if last_date_str:
-                last_active = datetime.strptime(last_date_str, "%Y-%m-%d").date()
-                days_diff = (date.today() - last_active).days
-                
-                if days_diff == 1:
-                    # Học liên tiếp ngày hôm sau -> Tăng streak
-                    curr_streak += 1
-                elif days_diff > 1:
-                    # Bị ngắt quãng ngày -> Reset về 1
-                    curr_streak = 1
-                # Nếu days_diff == 0 (học nhiều bài cùng ngày) -> Giữ nguyên streak
+
+            last_date = pd.to_datetime(
+                last_active_date
+            ).date()
+
+            days_diff = (
+                today - last_date
+            ).days
+
+            if days_diff == 0:
+
+                return
+
+            elif days_diff == 1:
+
+                current_streak += 1
+
             else:
-                curr_streak = 1
-                
-            if curr_streak > long_streak:
-                long_streak = curr_streak
-                
-            supabase.table("user_streaks").update({
-                "current_streak": curr_streak,
-                "longest_streak": long_streak,
-                "last_active_date": today_str
-            }).eq("user_id", user_id_str).execute()
-            
-    except Exception as streak_err:
-        print(f"[DEBUG LỖI] Không thể cập nhật Streak: {streak_err}")
-        
-# =====================================================================
-# MILESTONE 6: CƠ CHẾ CACHE QUIZ & TRANSCRIPT TỪ DATABASE
-# =====================================================================
-def get_cached_episode_data(episode_id: str) -> dict:
-    """
-    Kiểm tra xem tập bài học đã được xử lý qua AI và lưu cache chưa.
-    Trả về dict chứa audio_url, transcript và quiz_json nếu có, ngược lại trả về None.
-    """
-    print(f"\n[DEBUG CACHE] >>>>>>>>>> BẮT ĐẦU: Kiểm tra Cache cho Episode ID: {episode_id} <<<<<<<<<<", flush=True)
-    if not supabase:
-        print("[DEBUG CACHE] ⚠️ Thất bại: Kết nối Supabase chưa được khởi tạo (supabase is None).", flush=True)
-        return None
-        
-    try:
-        start_time = datetime.now()
-        res = supabase.table("episodes").select("audio_url, transcript, quiz_json").eq("id", str(episode_id)).execute()
-        duration = (datetime.now() - start_time).total_seconds()
-        
-        if res.data:
-            record = res.data[0]
-            transcript = record.get("transcript")
-            quiz_json = record.get("quiz_json")
-            
-            # Điều kiện trúng cache: Phải có cả transcript và dữ liệu quiz_json
-            if transcript and quiz_json:
-                print(f"[DEBUG CACHE] 🎉 HIT (Trúng Cache)! Tìm thấy dữ liệu trong DB. Thời gian truy vấn: {duration:.4f} giây.", flush=True)
-                print(f"[DEBUG CACHE] - Độ dài Transcript: {len(transcript)} ký tự.", flush=True)
-                print(f"[DEBUG CACHE] - Kiểu dữ liệu Quiz ẩn trong DB: {type(quiz_json)}", flush=True)
-                print("[DEBUG CACHE] >>>>>>>>>> KẾT THÚC: Kiểm tra Cache thành công <<<<<<<<<<\n", flush=True)
-                return {
-                    "audio_url": record.get("audio_url"),
-                    "transcript": transcript,
-                    "quiz_json": quiz_json
-                }
-            else:
-                print(f"[DEBUG CACHE] 💨 MISS (Trượt Cache): Bản ghi tồn tại nhưng transcript hoặc quiz_json bị rỗng.", flush=True)
-        else:
-            print(f"[DEBUG CACHE] 💨 MISS (Trượt Cache): Không tìm thấy bản ghi nào khớp với ID {episode_id} trong bảng 'episodes'.", flush=True)
-            
+
+                current_streak = 1
+
+        longest_streak = max(
+            longest_streak,
+            current_streak
+        )
+
+        payload = {
+            "current_streak": current_streak,
+            "longest_streak": longest_streak,
+            "last_active_date": today.isoformat()
+        }
+
+        (
+            supabase.table("user_streaks")
+            .update(payload)
+            .eq("user_id", str(user_id))
+            .execute()
+        )
+
     except Exception as e:
-        print(f"[DEBUG CACHE 🚨 LỖI HỆ THỐNG]: Không thể truy vấn bảng episodes để lấy dữ liệu cache: {str(e)}", flush=True)
-        
-    print("[DEBUG CACHE] >>>>>>>>>> KẾT THÚC: Luồng kiểm tra trả về trạng thái không có cache <<<<<<<<<<\n", flush=True)
-    return None
+
+        logger.exception(
+            f"update_streak error: {e}"
+        )
+
+
+# =====================================================
+# LEARNING HISTORY
+# =====================================================
+
+def save_learning_history(
+    user_id: str,
+    episode_id: str,
+    score: int,
+    duration_seconds: int
+):
+
+    if not supabase:
+        raise Exception(
+            "Supabase chưa được cấu hình"
+        )
+
+    try:
+
+        payload = {
+            "user_id": str(user_id),
+            "episode_id": str(episode_id),
+            "score": score,
+            "duration_seconds": duration_seconds,
+            "completed_at": datetime.utcnow().isoformat()
+        }
+
+        (
+            supabase.table("learning_history")
+            .insert(payload)
+            .execute()
+        )
+
+        logger.info(
+            f"✅ Saved learning history user={user_id}"
+        )
+
+        update_streak(user_id)
+
+    except Exception as e:
+
+        logger.exception(
+            f"save_learning_history error: {e}"
+        )
+
+        raise
+
+
+# =====================================================
+# EPISODE CACHE
+# =====================================================
+
+def get_cached_episode_data(
+    episode_id: str
+):
+
+    if not supabase:
+        return None
+
+    try:
+
+        res = (
+            supabase.table("episodes")
+            .select(
+                "audio_url,transcript,quiz_json"
+            )
+            .eq("id", str(episode_id))
+            .execute()
+        )
+
+        if not res.data:
+            return None
+
+        row = res.data[0]
+
+        if (
+            row.get("transcript")
+            and row.get("quiz_json")
+        ):
+            return row
+
+        return None
+
+    except Exception as e:
+
+        logger.exception(
+            f"cache error: {e}"
+        )
+
+        return None
+
+
+# =====================================================
+# ANALYTICS
+# =====================================================
+
+def get_user_analytics(
+    user_id: str
+):
+
+    analytics = {
+        "current_streak": 0,
+        "longest_streak": 0,
+        "total_episodes": 0,
+        "total_minutes": 0,
+        "total_hours": 0.0,
+        "avg_score": 0.0,
+        "latest_score": 0,
+        "weekly_data": [0] * 7
+    }
+
+    if not supabase:
+        return analytics
+
+    try:
+
+        user_id = str(user_id)
+
+        # STREAK
+
+        streak_res = (
+            supabase.table("user_streaks")
+            .select(
+                "current_streak,longest_streak"
+            )
+            .eq("user_id", user_id)
+            .execute()
+        )
+
+        if streak_res.data:
+
+            analytics["current_streak"] = (
+                streak_res.data[0].get(
+                    "current_streak",
+                    0
+                )
+            )
+
+            analytics["longest_streak"] = (
+                streak_res.data[0].get(
+                    "longest_streak",
+                    0
+                )
+            )
+
+        # HISTORY
+
+        history_res = (
+            supabase.table("learning_history")
+            .select(
+                "score,duration_seconds,created_at"
+            )
+            .eq("user_id", user_id)
+            .order(
+                "created_at",
+                desc=True
+            )
+            .execute()
+        )
+
+        if not history_res.data:
+
+            return analytics
+
+        df = pd.DataFrame(
+            history_res.data
+        )
+
+        analytics["total_episodes"] = len(df)
+
+        total_seconds = (
+            df["duration_seconds"]
+            .fillna(0)
+            .sum()
+        )
+
+        analytics["total_minutes"] = int(
+            total_seconds / 60
+        )
+
+        analytics["total_hours"] = round(
+            total_seconds / 3600,
+            1
+        )
+
+        analytics["avg_score"] = round(
+            df["score"].mean(),
+            1
+        )
+
+        analytics["latest_score"] = int(
+            df.iloc[0]["score"]
+        )
+
+        # WEEKLY DATA
+
+        df["created_at"] = pd.to_datetime(
+            df["created_at"],
+            errors="coerce"
+        )
+
+        df = df.dropna(
+            subset=["created_at"]
+        )
+
+        weekly = [0] * 7
+
+        today = datetime.utcnow()
+
+        current_week = (
+            today.isocalendar().week
+        )
+
+        current_year = today.year
+
+        df["week"] = (
+            df["created_at"]
+            .dt.isocalendar()
+            .week
+        )
+
+        df["year"] = (
+            df["created_at"]
+            .dt.year
+        )
+
+        df["dow"] = (
+            df["created_at"]
+            .dt.dayofweek
+        )
+
+        current_week_df = df[
+            (df["week"] == current_week)
+            &
+            (df["year"] == current_year)
+        ]
+
+        for _, row in current_week_df.iterrows():
+
+            weekly[
+                int(row["dow"])
+            ] += (
+                row["duration_seconds"] / 60
+            )
+
+        analytics["weekly_data"] = [
+            round(x, 1)
+            for x in weekly
+        ]
+
+        return analytics
+
+    except Exception as e:
+
+        logger.exception(
+            f"analytics error: {e}"
+        )
+
+        return analytics
+
+
+# =====================================================
+# BADGES
+# =====================================================
+
+def evaluate_user_badges(
+    analytics: dict
+):
+
+    badges = []
+
+    if analytics["total_episodes"] >= 1:
+        badges.append({
+            "icon": "🌱",
+            "name": "First Step",
+            "desc": "Hoàn thành bài đầu tiên"
+        })
+
+    if analytics["total_episodes"] >= 5:
+        badges.append({
+            "icon": "📚",
+            "name": "Bookworm",
+            "desc": "Hoàn thành 5 bài học"
+        })
+
+    if analytics["total_hours"] >= 1:
+        badges.append({
+            "icon": "⏱️",
+            "name": "Time Master",
+            "desc": "Luyện nghe hơn 1 giờ"
+        })
+
+    if analytics["longest_streak"] >= 3:
+        badges.append({
+            "icon": "🔥",
+            "name": "On Fire",
+            "desc": "Học liên tiếp 3 ngày"
+        })
+
+    return badges

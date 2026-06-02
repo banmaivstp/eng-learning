@@ -2,166 +2,364 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import json
+import logging
 import xml.etree.ElementTree as ET
+
+logger = logging.getLogger("modules.scraper")
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    )
+}
+
+session = requests.Session()
+session.headers.update(HEADERS)
+
+
+# ==========================================================
+# AUDIO URL
+# ==========================================================
 
 def get_audio_url_from_apple(apple_url: str) -> str:
     """
-    Bóc tách và tìm link trực tiếp file âm thanh (.mp3/.m4a) từ tập phim.
-    Hỗ trợ xử lý cả link web Apple Podcast và link chuyển hướng trực tiếp từ RSS Feed.
+    Tìm link audio trực tiếp từ Apple Podcast episode.
     """
+
     if not apple_url:
         return None
-        
-    # Loại bỏ khoảng trắng thừa
+
     apple_url = apple_url.strip()
-    
-    # --- BƯỚC 1: KIỂM TRA NẾU LINK ĐÃ LÀ FILE ÂM THANH TRỰC TIẾP ---
-    # Rất nhiều link từ RSS Feed trỏ thẳng tới file media .mp3 của máy chủ phát sóng
-    if re.search(r'\.(?:mp3|m4a|mp4|aac|ogg)(?:\?|$)', apple_url, re.IGNORECASE):
+
+    logger.info(f"🔍 Tìm audio URL: {apple_url}")
+
+    # Nếu đã là mp3/m4a
+    if re.search(
+        r"\.(mp3|m4a|aac|ogg|mp4)(\?|$)",
+        apple_url,
+        re.IGNORECASE
+    ):
+        logger.info("✅ URL đã là media file")
         return apple_url
-        
+
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        
-        # --- BƯỚC 2: XỬ LÝ LƯU LƯỢNG CHUYỂN HƯỚNG (FOLLOW REDIRECTS) ---
-        # Gửi request và cho phép tự động chuyển hướng để lấy URL đích thực sự
-        response = requests.get(apple_url, headers=headers, timeout=15, allow_redirects=True)
+
+        response = session.get(
+            apple_url,
+            timeout=20,
+            allow_redirects=True
+        )
+
+        response.raise_for_status()
+
         final_url = response.url
-        
-        # Kiểm tra nếu sau khi chuyển hướng, URL đích đã biến thành file âm thanh trực tiếp
-        if re.search(r'\.(?:mp3|m4a|mp4|aac|ogg)(?:\?|$)', final_url, re.IGNORECASE):
+
+        if re.search(
+            r"\.(mp3|m4a|aac|ogg|mp4)(\?|$)",
+            final_url,
+            re.IGNORECASE
+        ):
+            logger.info("✅ Redirect tới media file")
             return final_url
-            
-        html_text = response.text
-        soup = BeautifulSoup(html_text, 'html.parser')
-        
-        # --- BƯỚC 3: CÀO CẤU TRÚC HTML (Nếu URL cuối vẫn là trang Web) ---
-        # Cách 3.1: Tìm trong thẻ Json-LD cấu trúc dữ liệu của Apple
-        script_tags = soup.find_all('script', type='application/ld+json')
-        for script in script_tags:
+
+        html = response.text
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        # ==================================================
+        # JSON-LD
+        # ==================================================
+
+        for script in soup.find_all(
+            "script",
+            type="application/ld+json"
+        ):
             try:
-                data = json.loads(script.text)
-                if isinstance(data, dict) and "contentUrl" in data:
-                    return data["contentUrl"]
+
+                if not script.string:
+                    continue
+
+                data = json.loads(script.string)
+
+                if isinstance(data, dict):
+
+                    if "contentUrl" in data:
+                        return data["contentUrl"]
+
+                    media = data.get("associatedMedia")
+
+                    if isinstance(media, dict):
+                        if media.get("contentUrl"):
+                            return media["contentUrl"]
+
                 elif isinstance(data, list):
+
                     for item in data:
-                        if isinstance(item, dict) and "contentUrl" in item:
+                        if (
+                            isinstance(item, dict)
+                            and item.get("contentUrl")
+                        ):
                             return item["contentUrl"]
-            except:
+
+            except Exception:
                 continue
-                
-        # Cách 3.2: Tìm trong các thuộc tính HTML5 nhúng (Thẻ audio)
-        audio_tag = soup.find('audio')
-        if audio_tag and audio_tag.get('src'):
-            return audio_tag.get('src')
-            
-        # Cách 3.3: Quét Regex tìm đuôi mở rộng file âm thanh xuất hiện trong mã nguồn
-        match = re.search(r'https://[^\\\"]+\.(?:mp3|m4a|mp4|aac)[^\\\"]*', html_text, re.IGNORECASE)
-        if match:
-            return match.group(0)
-            
+
+        # ==================================================
+        # audio tag
+        # ==================================================
+
+        audio_tag = soup.find("audio")
+
+        if audio_tag and audio_tag.get("src"):
+            return audio_tag["src"]
+
+        source_tag = soup.find("source")
+
+        if source_tag and source_tag.get("src"):
+            return source_tag["src"]
+
+        # ==================================================
+        # regex fallback
+        # ==================================================
+
+        matches = re.findall(
+            r'https://[^\s"\']+\.(?:mp3|m4a|aac|ogg|mp4)(?:\?[^\s"\']*)?',
+            html,
+            re.IGNORECASE
+        )
+
+        if matches:
+            return matches[0]
+
+        logger.warning("⚠️ Không tìm được audio URL")
+
+        return apple_url
+
     except Exception as e:
-        print(f"⚠️ Lỗi cào link audio chi tiết: {e}")
-        return None
-        
+
+        logger.error(
+            f"🚨 Lỗi lấy audio URL: {e}"
+        )
+
+        return apple_url
+
+
+# ==========================================================
+# RSS URL
+# ==========================================================
+
+def _get_rss_url(show_url: str) -> str:
+    """
+    Tìm RSS Feed bằng Apple Lookup API.
+    """
+
+    try:
+
+        match = re.search(
+            r"/id(\d+)",
+            show_url
+        )
+
+        if not match:
+            return None
+
+        show_id = match.group(1)
+
+        lookup_url = (
+            f"https://itunes.apple.com/lookup"
+            f"?id={show_id}&entity=podcast"
+        )
+
+        logger.info(
+            f"📡 Lookup Apple API show_id={show_id}"
+        )
+
+        res = session.get(
+            lookup_url,
+            timeout=15
+        )
+
+        res.raise_for_status()
+
+        data = res.json()
+
+        if data.get("resultCount", 0) > 0:
+
+            rss_url = (
+                data["results"][0]
+                .get("feedUrl")
+            )
+
+            if rss_url:
+                logger.info(
+                    f"✅ RSS Feed: {rss_url}"
+                )
+                return rss_url
+
+    except Exception as e:
+
+        logger.warning(
+            f"⚠️ Apple Lookup API lỗi: {e}"
+        )
+
     return None
 
+
+# ==========================================================
+# SHOW
+# ==========================================================
+
 def get_episode_list_from_show(show_url: str) -> dict:
-    """
-    Hàm lấy danh sách tập bài học chuẩn xác bằng cách bóc tách ID của Show
-    và sử dụng API Lookup chính thức từ Apple iTunes để lấy RSS Feed gốc.
-    """
+
     if not show_url:
         return None
-        
+
+    logger.info(
+        f"📥 Đang tải show: {show_url}"
+    )
+
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        
-        id_match = re.search(r'/id(\d+)', show_url)
-        rss_url = None
-        
-        if id_match:
-            show_id = id_match.group(1)
-            lookup_url = f"https://itunes.apple.com/lookup?id={show_id}&entity=podcast"
-            lookup_res = requests.get(lookup_url, headers=headers, timeout=10)
-            
-            if lookup_res.status_code == 200:
-                lookup_data = lookup_res.json()
-                if lookup_data.get("resultCount", 0) > 0:
-                    rss_url = lookup_data["results"][0].get("feedUrl")
-        
+
+        rss_url = _get_rss_url(show_url)
+
         if not rss_url:
-            print("⚠️ API Lookup không phản hồi, chuyển sang phương án quét Regex thô...")
-            res = requests.get(show_url, headers=headers, timeout=15)
-            html_content = res.text
-            
-            rss_match = re.search(r'\"rssUrl\"\s*:\s*\"(https://[^\"]+)\"', html_content)
-            if rss_match:
-                rss_url = rss_match.group(1)
-            else:
-                rss_match_fallback = re.search(r'(https://[^\\\"]+feed[^\\\"]*\.xml[^\\\"]*)', html_content, re.IGNORECASE)
-                if rss_match_fallback:
-                    rss_url = rss_match_fallback.group(1)
-                    
-        if not rss_url:
-            print("⚠️ Không tìm thấy URL RSS Feed hợp lệ cho Show này.")
+
+            logger.error(
+                "❌ Không lấy được RSS Feed"
+            )
+
             return None
-            
-        rss_url = rss_url.replace("\\/", "/").replace("\\u002F", "/")
-        print(f"✅ Đường dẫn RSS Feed được xử lý: {rss_url}")
-        
-        rss_res = requests.get(rss_url, headers=headers, timeout=15)
-        root = ET.fromstring(rss_res.content)
-        channel = root.find('channel')
-        
+
+        rss_url = (
+            rss_url
+            .replace("\\/", "/")
+            .replace("\\u002F", "/")
+        )
+
+        rss_res = session.get(
+            rss_url,
+            timeout=20
+        )
+
+        rss_res.raise_for_status()
+
+        xml_content = rss_res.content
+
+        try:
+            root = ET.fromstring(xml_content)
+
+        except ET.ParseError as e:
+
+            logger.error(
+                f"🚨 RSS XML lỗi format: {e}"
+            )
+
+            return None
+
+        channel = root.find("channel")
+
         if channel is None:
+
+            logger.error(
+                "❌ RSS không có channel"
+            )
+
             return None
-            
-        show_title = channel.find('title').text if channel.find('title') is not None else "Podcast Show"
-        
+
+        show_title = "Podcast"
+
+        title_tag = channel.find("title")
+
+        if title_tag is not None:
+            show_title = title_tag.text
+
         show_image = ""
-        img_tag = channel.find('image')
-        if img_tag is not None and img_tag.find('url') is not None:
-            show_image = img_tag.find('url').text
+
+        image_tag = channel.find("image")
+
+        if (
+            image_tag is not None
+            and image_tag.find("url") is not None
+        ):
+            show_image = image_tag.find("url").text
+
         else:
-            itunes_img = channel.find('{http://www.itunes.com/dtds/podcast-1.0.dtd}image')
+
+            itunes_img = channel.find(
+                "{http://www.itunes.com/dtds/podcast-1.0.dtd}image"
+            )
+
             if itunes_img is not None:
-                show_image = itunes_img.get('href')
+                show_image = itunes_img.get("href", "")
 
         episodes = []
-        for item in channel.findall('item'):
-            title = item.find('title').text if item.find('title') is not None else "Untitled Episode"
-            
-            # ƯU TIÊN LẤY LINK FILE AM THANH TRỰC TIẾP TỪ THẺ ENCLOSURE CỦA RSS FEED
-            enclosure = item.find('enclosure')
-            link = ""
-            if enclosure is not None and enclosure.get('url'):
-                link = enclosure.get('url')
+
+        for item in channel.findall("item"):
+
+            title = "Untitled Episode"
+
+            title_tag = item.find("title")
+
+            if (
+                title_tag is not None
+                and title_tag.text
+            ):
+                title = title_tag.text
+
+            enclosure = item.find("enclosure")
+
+            episode_url = ""
+
+            if (
+                enclosure is not None
+                and enclosure.get("url")
+            ):
+                episode_url = enclosure.get("url")
+
             else:
-                link = item.find('link').text if item.find('link') is not None else ""
-            
-            ep_image = ""
-            itunes_ep_img = item.find('{http://www.itunes.com/dtds/podcast-1.0.dtd}image')
-            if itunes_ep_img is not None:
-                ep_image = itunes_ep_img.get('href')
-            else:
-                ep_image = show_image
-                
+
+                link_tag = item.find("link")
+
+                if (
+                    link_tag is not None
+                    and link_tag.text
+                ):
+                    episode_url = link_tag.text
+
+            ep_image = show_image
+
+            itunes_ep_img = item.find(
+                "{http://www.itunes.com/dtds/podcast-1.0.dtd}image"
+            )
+
+            if (
+                itunes_ep_img is not None
+                and itunes_ep_img.get("href")
+            ):
+                ep_image = itunes_ep_img.get("href")
+
             episodes.append({
                 "title": title,
-                "apple_url": link,
+                "apple_url": episode_url,
                 "image": ep_image
             })
-            
+
+        logger.info(
+            f"✅ Đã lấy {len(episodes)} episodes"
+        )
+
         return {
             "show_title": show_title,
             "show_image": show_image,
             "episodes": episodes
         }
+
     except Exception as e:
-        print(f"⚠️ Lỗi xử lý cào RSS Show chi tiết: {e}")
+
+        logger.error(
+            f"🚨 Lỗi scraper: {e}"
+        )
+
         return None

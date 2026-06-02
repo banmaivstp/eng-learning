@@ -1,0 +1,172 @@
+[
+  {
+    "table_name": "user_streaks",
+    "column_name": "last_active_date",
+    "data_type": "date"
+  },
+  {
+    "table_name": "episodes",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "episodes",
+    "column_name": "show_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "episodes",
+    "column_name": "quiz_json",
+    "data_type": "jsonb"
+  },
+  {
+    "table_name": "episodes",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "learning_history",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "learning_history",
+    "column_name": "episode_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "learning_history",
+    "column_name": "score",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "learning_history",
+    "column_name": "duration_seconds",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "learning_history",
+    "column_name": "completed_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "learning_history",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "total_score",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "user_streaks",
+    "column_name": "current_streak",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "user_streaks",
+    "column_name": "longest_streak",
+    "data_type": "integer"
+  },
+  {
+    "table_name": "users_profile",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "users_profile",
+    "column_name": "last_sign_in_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "shows",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "shows",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "table_name": "users_profile",
+    "column_name": "email",
+    "data_type": "text"
+  },
+  {
+    "table_name": "users_profile",
+    "column_name": "full_name",
+    "data_type": "text"
+  },
+  {
+    "table_name": "users_profile",
+    "column_name": "avatar_url",
+    "data_type": "text"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "avatar_url",
+    "data_type": "text"
+  },
+  {
+    "table_name": "user_streaks",
+    "column_name": "user_id",
+    "data_type": "text"
+  },
+  {
+    "table_name": "shows",
+    "column_name": "apple_show_url",
+    "data_type": "text"
+  },
+  {
+    "table_name": "shows",
+    "column_name": "title",
+    "data_type": "text"
+  },
+  {
+    "table_name": "shows",
+    "column_name": "cover_image",
+    "data_type": "text"
+  },
+  {
+    "table_name": "learning_history",
+    "column_name": "user_id",
+    "data_type": "text"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "id",
+    "data_type": "text"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "email",
+    "data_type": "text"
+  },
+  {
+    "table_name": "episodes",
+    "column_name": "title",
+    "data_type": "text"
+  },
+  {
+    "table_name": "episodes",
+    "column_name": "audio_url",
+    "data_type": "text"
+  },
+  {
+    "table_name": "episodes",
+    "column_name": "transcript",
+    "data_type": "text"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "full_name",
+    "data_type": "text"
+  }
+]
