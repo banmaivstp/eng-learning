@@ -77,7 +77,11 @@ else:
     # GIAO DIỆN 1: DANH SÁCH BÀI HỌC PODCAST
     if st.session_state['page'] == 'list':
         st.title("⚡ Khóa học nghe hiểu tiếng Anh qua Podcast")
-        input_show_url = st.text_input("Dán đường dẫn Apple Podcast của Show tổng tại đây:")
+        DEFAULT_PODCAST_URL = "https://podcasts.apple.com/vn/podcast/5-minute-english-talk/id1820739470"
+        input_show_url = st.text_input("Dán đường dẫn Apple Podcast của Show tổng tại đây:",
+                value=DEFAULT_PODCAST_URL)
+        # input_show_url = st.text_input("Dán đường dẫn Apple Podcast của Show tổng tại đây:")
+        
         
         if st.button("🔍 Quét danh sách bài học"):
             if input_show_url:
