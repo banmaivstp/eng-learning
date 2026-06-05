@@ -12,7 +12,7 @@ from modules.database import (
     get_user_analytics,
     evaluate_user_badges
 )
-from views.styles import inject_global_css, inject_sidebar_css
+from views.styles import inject_global_css, inject_sidebar_css, inject_dashboard_css, inject_sidebar_toggle_fix
 from views.dashboard_view import render_dashboard_screen
 # Import sidebar view độc lập vừa tách theo cấu trúc Milestone 1
 from views.sidebar_view import render_sidebar_navigation
@@ -28,6 +28,14 @@ inject_global_css()
 
 # --- INJECT SIDEBAR CSS (Gen Z UI - Milestone 1) ---
 inject_sidebar_css()
+
+# --- INJECT DASHBOARD CSS (Gen Z UI - Milestone 2) ---
+inject_dashboard_css()
+
+# --- INJECT SIDEBAR TOGGLE FIX (Luôn gọi CUỐI CÙNG sau tất cả CSS inject) ---
+# Fix: nút mở/đóng sidebar bị ẩn do overflow:hidden và header:hidden trong global css cũ
+inject_sidebar_toggle_fix()
+logger.debug("✅ app_main: All CSS injected. Sidebar toggle fix applied.")
 
 # --- [BẢN VÁ PHÁT TRIỂN]: BỎ QUA MÀN HÌNH LOGIN KHI HOT-RELOAD (Môi trường Local/Dev) ---
 # Nếu muốn vào thẳng giao diện mà không cần bấm nút qua Google OAuth, bạn có thể bỏ dấu comment 3 dòng dưới:

@@ -4,83 +4,243 @@ import logging
 
 logger = logging.getLogger("views.dashboard_view")
 
+# =====================================================
+# DỮ LIỆU MẪU SHOWS — Fallback khi chưa có DB
+# Production: thay bằng query Supabase table "shows"
+# =====================================================
+SAMPLE_SHOWS = [
+    {"title": "English Listening Daily",  "episodes": 12, "icon": "🎙️"},
+    {"title": "Daily Conversations",      "episodes": 12, "icon": "🧠"},
+    {"title": "Business English Podcast", "episodes": 12, "icon": "☕"},
+    {"title": "Real Life English",        "episodes": 12, "icon": "🌆"},
+    {"title": "Speak Better Every Day",   "episodes": 12, "icon": "🎧"},
+    {"title": "Travel & Culture Stories", "episodes": 12, "icon": "🏔️"},
+]
+
+
 def render_dashboard_screen(user_analytics_data=None):
     """
-    Render giao diện Dashboard độc lập, tối ưu hóa diện tích hiển thị (no-scroll).
-    Phù hợp chuẩn hóa với cấu trúc trả về từ modules/database.py
+    Render giao diện Dashboard theo chuẩn mockup Gen Z Dark UI.
+    Layout 2 cột: [Dashboard + Streak + Chart + Progress] | [Discover Shows]
+    Logic dữ liệu giữ nguyên hoàn toàn — chỉ thay đổi phần render UI.
     """
-    logger.debug("📊 Rendering independent Dashboard screen.")
-    
-    # 1. Fallback dữ liệu mẫu nếu không load được từ Database (Bảo toàn cấu trúc của hệ thống)
+    logger.debug("📊 Rendering Dashboard screen — Gen Z UI v2.")
+
+    # =====================================================
+    # 1. FALLBACK DATA — Tương thích cả key cũ lẫn mới
+    # =====================================================
     if not user_analytics_data:
+        logger.warning("⚠️ dashboard_view: Không có analytics data — dùng fallback.")
         user_analytics_data = {
-            "streak_count": 0,
+            "streak_count":   0,
+            "current_streak": 0,
             "total_episodes": 0,
-            "total_hours": 0.0,
-            "average_score": 0.0,
-            "weekly_data": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            "total_hours":    0.0,
+            "avg_score":      0.0,
+            "average_score":  0.0,
+            "weekly_data":    [0.0] * 7,
         }
 
-    # 2. VỊ TRÍ ĐẤT VÀNG: Hộp thông tin Streak 🔥 lên vị trí cao nhất
-    streak = user_analytics_data.get("streak_count", 0)
-    st.markdown(f"""
-        <div style="background: linear-gradient(135deg, rgba(255, 75, 75, 0.15) 0%, rgba(255, 145, 0, 0.1) 100%);
-                    padding: 12px 20px; 
-                    border-radius: 12px; 
-                    border: 1px solid rgba(255, 75, 75, 0.3); 
-                    text-align: center; 
-                    margin-bottom: 15px;">
-            <span style="font-size: 20px; font-weight: 800; color: #FF4B4B; letter-spacing: 0.5px;">
-                🔥 BẠN ĐÃ DUY TRÌ CHUỖI STREAK: {streak} NGÀY LIÊN TIẾP!
-            </span>
-            <br/>
-            <span style="font-size: 12px; color: #94A3B8;">Hãy tiếp tục luyện nghe hôm nay để không làm tắt ngọn lửa học tập nhé.</span>
-        </div>
-    """, unsafe_allow_html=True)
+    # Lấy giá trị — tương thích cả key cũ lẫn mới từ database.py
+    streak      = user_analytics_data.get("current_streak") or user_analytics_data.get("streak_count", 0)
+    total_eps   = user_analytics_data.get("total_episodes", 0)
+    total_hours = user_analytics_data.get("total_hours", 0.0)
+    avg_score   = user_analytics_data.get("avg_score") or user_analytics_data.get("average_score", 0.0)
+    weekly_raw  = user_analytics_data.get("weekly_data", [0.0] * 7)
 
-    # 3. BỐ CỤC METRICS THU GỌN (Dàn hàng ngang dạng nén diện tích, tránh cuộn dọc)
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown(f"""
-            <div style="background: rgba(255, 255, 255, 0.03); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); text-align: center;">
-                <div style="font-size: 11px; color: #94A3B8; font-weight: 600; text-transform: uppercase;">Tổng số bài</div>
-                <div style="font-size: 22px; font-weight: 700; color: #00F2FE; margin-top: 2px;">{user_analytics_data.get("total_episodes", 0)}</div>
-            </div>
-        """, unsafe_allow_html=True)
-        
-    with col2:
-        st.markdown(f"""
-            <div style="background: rgba(255, 255, 255, 0.03); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); text-align: center;">
-                <div style="font-size: 11px; color: #94A3B8; font-weight: 600; text-transform: uppercase;">Thời gian nghe</div>
-                <div style="font-size: 22px; font-weight: 700; color: #4FACFE; margin-top: 2px;">{user_analytics_data.get("total_hours", 0.0)}h</div>
-            </div>
-        """, unsafe_allow_html=True)
-        
-    with col3:
-        st.markdown(f"""
-            <div style="background: rgba(255, 255, 255, 0.03); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); text-align: center;">
-                <div style="font-size: 11px; color: #94A3B8; font-weight: 600; text-transform: uppercase;">Điểm số TB</div>
-                <div style="font-size: 22px; font-weight: 700; color: #00FF87; margin-top: 2px;">{user_analytics_data.get("average_score", 0.0)}/10</div>
-            </div>
-        """, unsafe_allow_html=True)
-
-    st.write("") # Khoảng đệm siêu nhỏ
-
-    # 4. BIỂU ĐỒ CỘT TIẾN ĐỘ DẠNG NÈN DIỆN TÍCH (Giới hạn height=180px nghiêm ngặt)
-    st.markdown('<div style="font-size: 13px; font-weight: 700; color: #F1F5F9; margin-bottom: 8px;">📊 TIẾN ĐỘ HỌC TẬP TUẦN NÀY (PHÚT)</div>', unsafe_allow_html=True)
-    
-    # Map mảng 7 phần từ của database.py tương ứng thứ 2 -> chủ nhật
-    days = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"]
-    weekly_raw = user_analytics_data.get("weekly_data", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-    
-    # Đảm bảo mảng luôn có đủ dữ liệu vẽ chart
+    # Đảm bảo weekly_data luôn đủ 7 phần tử
     if len(weekly_raw) < 7:
-        weekly_raw += [0.0] * (7 - len(weekly_raw))
-        
-    chart_data = pd.DataFrame({
-        'Ngày': days,
-        'Thời gian (Phút)': weekly_raw[:7]
-    }).set_index('Ngày')
-    
-    st.bar_chart(chart_data, height=180, use_container_width=True)
+        weekly_raw = list(weekly_raw) + [0.0] * (7 - len(weekly_raw))
+    total_minutes = sum(weekly_raw[:7])
+
+    logger.debug(
+        f"📊 dashboard_view: streak={streak}, eps={total_eps}, "
+        f"hours={total_hours}, avg_score={avg_score}, "
+        f"weekly_total={total_minutes:.1f}min"
+    )
+
+    # =====================================================
+    # 2. LAYOUT — 2 CỘT THEO MOCKUP
+    # =====================================================
+    col_left, col_right = st.columns([1.15, 0.85], gap="medium")
+
+    # ─────────────────────────────────────────────────
+    #  CỘT TRÁI: Dashboard + Streak + Chart + Progress
+    # ─────────────────────────────────────────────────
+    with col_left:
+
+        # --- HEADER TITLE ---
+        st.markdown(
+            '<div class="db-title">Dashboard</div>',
+            unsafe_allow_html=True
+        )
+        logger.debug("📊 dashboard_view: Rendered header.")
+
+        # --- STREAK CARD ---
+        streak_label = f"{streak} Days Streak" if streak > 0 else "Start your streak today!"
+        streak_sub   = "Keep it up! You're on fire!" if streak > 0 else "Complete your first lesson to begin."
+        st.markdown(f"""
+        <div class="db-streak-card">
+            <div class="db-streak-left">
+                <div class="db-streak-fire-icon">🔥</div>
+                <div class="db-streak-text-group">
+                    <div class="db-streak-title">{streak_label}</div>
+                    <div class="db-streak-sub">{streak_sub}</div>
+                </div>
+            </div>
+            <div class="db-streak-fire-deco">🔥</div>
+        </div>
+        """, unsafe_allow_html=True)
+        logger.debug(f"📊 dashboard_view: Rendered streak card — streak={streak}.")
+
+        # --- STUDY TIME CHART CARD HEADER ---
+        st.markdown(f"""
+        <div class="db-card">
+            <div class="db-card-header">
+                <div class="db-card-title">Study Time <span>(minutes)</span></div>
+                <div class="db-card-total">Total: {total_minutes:.0f} mins</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # --- BIỂU ĐỒ — Dùng Altair để kiểm soát màu cyan neon theo mockup ---
+        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        chart_df = pd.DataFrame({
+            "Day":     days,
+            "Minutes": [round(v, 1) for v in weekly_raw[:7]]
+        })
+
+        try:
+            import altair as alt
+            logger.debug("📊 dashboard_view: Rendering Altair bar chart (cyan neon).")
+            chart = (
+                alt.Chart(chart_df)
+                .mark_bar(
+                    cornerRadiusTopLeft=4,
+                    cornerRadiusTopRight=4,
+                    color="#00F2FE",
+                    opacity=0.9,
+                )
+                .encode(
+                    x=alt.X("Day:N", sort=days, axis=alt.Axis(
+                        labelColor="#64748B",
+                        tickColor="#1E293B",
+                        domainColor="#1E293B",
+                        labelFontSize=11,
+                        labelFont="Inter, sans-serif",
+                    )),
+                    y=alt.Y("Minutes:Q", axis=alt.Axis(
+                        labelColor="#64748B",
+                        tickColor="#1E293B",
+                        domainColor="#1E293B",
+                        gridColor="rgba(255,255,255,0.04)",
+                        labelFontSize=11,
+                        labelFont="Inter, sans-serif",
+                    )),
+                    tooltip=[
+                        alt.Tooltip("Day:N", title="Day"),
+                        alt.Tooltip("Minutes:Q", title="Minutes", format=".0f"),
+                    ],
+                )
+                .properties(height=180, background="transparent")
+                .configure_view(strokeWidth=0, fill="transparent")
+            )
+            st.altair_chart(chart, use_container_width=True)
+            logger.debug(f"📊 dashboard_view: Altair chart rendered — weekly={weekly_raw[:7]}.")
+        except Exception as chart_err:
+            logger.warning(f"⚠️ dashboard_view: Altair render failed ({chart_err}), fallback to bar_chart.")
+            chart_fallback = pd.DataFrame({
+                "Day":     days,
+                "Minutes": [round(v, 1) for v in weekly_raw[:7]]
+            }).set_index("Day")
+            st.bar_chart(chart_fallback, height=190, use_container_width=True)
+
+        # --- PROGRESS OVERVIEW TITLE ---
+        st.markdown(
+            '<div class="db-progress-title">Progress Overview</div>',
+            unsafe_allow_html=True
+        )
+
+        # --- 3 METRIC CARDS ---
+        # avg_score từ database.py: thang 0–10 → convert sang %
+        avg_pct     = round(avg_score * 10) if avg_score <= 10 else round(avg_score)
+        score_label = "Excellent!" if avg_pct >= 80 else ("Good!" if avg_pct >= 60 else "Keep going!")
+
+        m1, m2, m3 = st.columns(3, gap="small")
+
+        with m1:
+            st.markdown(f"""
+            <div class="db-metric-card">
+                <div class="db-metric-icon">📖</div>
+                <div class="db-metric-label">LESSONS<br/>COMPLETED</div>
+                <div class="db-metric-value">{total_eps}</div>
+                <div class="db-metric-delta">+0 this week</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with m2:
+            st.markdown(f"""
+            <div class="db-metric-card">
+                <div class="db-metric-icon">🎯</div>
+                <div class="db-metric-label">AVG.<br/>SCORE</div>
+                <div class="db-metric-value">{avg_pct}%</div>
+                <div class="db-metric-delta">{score_label}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with m3:
+            st.markdown(f"""
+            <div class="db-metric-card">
+                <div class="db-metric-icon">🏆</div>
+                <div class="db-metric-label">QUIZZES<br/>COMPLETED</div>
+                <div class="db-metric-value">{total_eps}</div>
+                <div class="db-metric-delta">+0 this week</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        logger.debug(
+            f"📊 dashboard_view: Rendered progress overview — "
+            f"eps={total_eps}, avg_pct={avg_pct}%."
+        )
+
+    # ─────────────────────────────────────────────────
+    #  CỘT PHẢI: Discover Shows
+    #  BUG FIX: Render từng item riêng biệt bằng st.markdown
+    #  KHÔNG join chuỗi HTML trong vòng lặp vì Streamlit
+    #  sẽ escape/không render đúng khi HTML quá phức tạp
+    # ─────────────────────────────────────────────────
+    with col_right:
+
+        # --- DISCOVER HEADER ---
+        st.markdown(
+            '<div class="db-discover-title">Discover Shows</div>',
+            unsafe_allow_html=True
+        )
+
+        # --- PASTE URL ROW (UI placeholder) ---
+        st.markdown("""
+        <div class="db-url-row">
+            <span class="db-url-icon">🔗</span>
+            <span class="db-url-placeholder">Paste podcast URL here...</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # --- DANH SÁCH SHOWS ---
+        # BUG FIX: render TỪNG item bằng st.markdown() riêng biệt
+        # Tránh join HTML phức tạp trong vòng lặp gây Streamlit escape
+        logger.debug(f"📊 dashboard_view: Rendering {len(SAMPLE_SHOWS)} show items individually.")
+        for i, show in enumerate(SAMPLE_SHOWS):
+            border_style = "border-bottom: 1px solid rgba(255,255,255,0.05);" if i < len(SAMPLE_SHOWS) - 1 else ""
+            st.markdown(f"""
+            <div class="db-show-item" style="{border_style}">
+                <div class="db-show-thumb-placeholder">{show['icon']}</div>
+                <div class="db-show-info">
+                    <div class="db-show-title">{show['title']}</div>
+                    <div class="db-show-episodes">{show['episodes']} Episodes</div>
+                </div>
+                <div class="db-learn-btn">⚡ Learn</div>
+            </div>
+            """, unsafe_allow_html=True)
+            logger.debug(f"📊 dashboard_view: Rendered show[{i}] = {show['title']}")
+
+    logger.info("✅ dashboard_view: Dashboard screen rendered successfully.")
