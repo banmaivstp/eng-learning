@@ -12,10 +12,12 @@ from modules.database import (
     get_user_analytics,
     evaluate_user_badges
 )
-from views.styles import inject_global_css, inject_sidebar_css, inject_dashboard_css, inject_sidebar_toggle_fix
+from views.styles import inject_global_css, inject_sidebar_css, inject_dashboard_css, inject_sidebar_toggle_fix, inject_podcast_list_css, inject_show_list_css
 from views.dashboard_view import render_dashboard_screen
 # Import sidebar view độc lập vừa tách theo cấu trúc Milestone 1
 from views.sidebar_view import render_sidebar_navigation
+# Import show list view — Milestone 2 (Your Podcast Library)
+from views.show_list_view import render_podcast_discover_page
 
 # Khởi tạo Logger định danh cho luồng điều phối chính app
 logger = logging.getLogger("app_main")
@@ -35,6 +37,13 @@ inject_dashboard_css()
 # --- INJECT SIDEBAR TOGGLE FIX (Luôn gọi CUỐI CÙNG sau tất cả CSS inject) ---
 # Fix: nút mở/đóng sidebar bị ẩn do overflow:hidden và header:hidden trong global css cũ
 inject_sidebar_toggle_fix()
+
+# --- INJECT PODCAST LIST CSS (Milestone 2 — Show Library UI) ---
+inject_podcast_list_css()
+
+# --- INJECT SHOW LIST CSS (Milestone 2 — Your Podcast Library, prefix sl-) ---
+inject_show_list_css()
+
 logger.debug("✅ app_main: All CSS injected. Sidebar toggle fix applied.")
 
 # --- [BẢN VÁ PHÁT TRIỂN]: BỎ QUA MÀN HÌNH LOGIN KHI HOT-RELOAD (Môi trường Local/Dev) ---
@@ -58,7 +67,10 @@ else:
     user_id = get_logged_in_user_id()
 
     # 3. ĐIỀU PHỐI ĐỘC LẬP THEO TRẠNG THÁI TRANG (PAGE) ĐÃ ĐƯỢC SIDEBAR CẬP NHẬT
-    if st.session_state.get("current_page", "Dashboard") == "Dashboard":
+    current_page = st.session_state.get("current_page", "Dashboard")
+    logger.debug(f"✅ app_main: Routing → current_page='{current_page}'")
+
+    if current_page == "Dashboard":
         analytics_data = None
         if user_id:
             try:
@@ -69,6 +81,11 @@ else:
         
         # Gọi View render độc lập màn hình Dashboard (Nén diện tích hiển thị, no-scroll)
         render_dashboard_screen(user_analytics_data=analytics_data)
+
+    elif current_page == "Học tập":
+        # Màn hình Discover — Your Podcast Library
+        logger.info("📻 app_main: Rendering Podcast Library (Discover page).")
+        render_podcast_discover_page(supabase_client=supabase)
 
     else:
         # --- NHÁNH HIỂN THỊ DANH SÁCH BÀI HỌC VÀ QUIZ FLOW GỐC CỦA HỆ THỐNG ---

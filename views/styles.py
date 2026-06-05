@@ -1033,3 +1033,530 @@ def inject_sidebar_toggle_fix():
     </style>
     """, unsafe_allow_html=True)
     logger.debug("✅ Sidebar toggle fix injected successfully.")
+
+
+# =====================================================
+# PODCAST LIST CSS — THÊM MỚI (KHÔNG THAY ĐỔI CSS CŨ)
+# Quy tắc: CHỈ THÊM MỚI — không sửa bất kỳ hàm nào cũ
+# Màn hình: Your Podcast Library (Discover / Show List)
+# =====================================================
+def inject_podcast_list_css():
+    """
+    Inject CSS riêng cho màn hình Podcast Library — Gen Z Dark UI.
+    CHỈ THÊM MỚI — không đụng inject_global_css() / inject_sidebar_css()
+    / inject_dashboard_css() / inject_sidebar_toggle_fix().
+    """
+    logger.debug("🎨 Injecting Podcast List CSS (Show Library UI).")
+    st.markdown("""
+    <style>
+        /* =====================================================
+           PODCAST LIBRARY — PAGE HEADER
+        ===================================================== */
+        .pl-page-title {
+            font-size: 34px;
+            font-weight: 900;
+            color: #F1F5F9 !important;
+            letter-spacing: -0.8px;
+            line-height: 1.1;
+            margin-bottom: 6px;
+        }
+        .pl-page-subtitle {
+            font-size: 14px;
+            color: #64748B !important;
+            font-weight: 400;
+            margin-bottom: 20px;
+            letter-spacing: 0.1px;
+        }
+
+        /* =====================================================
+           SEARCH BAR ROW
+        ===================================================== */
+        .pl-search-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            padding: 11px 16px;
+            margin-bottom: 24px;
+            transition: border-color 0.2s ease;
+        }
+        .pl-search-row:hover {
+            border-color: rgba(0, 242, 254, 0.2);
+        }
+        .pl-search-icon {
+            font-size: 16px;
+            flex-shrink: 0;
+            color: #475569;
+        }
+        .pl-search-placeholder {
+            font-size: 14px;
+            color: #475569 !important;
+            font-weight: 400;
+        }
+
+        /* =====================================================
+           ADD NEW SHOW EXPANDER BUTTON
+        ===================================================== */
+        .pl-add-show-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 242, 254, 0.07);
+            border: 1px solid rgba(0, 242, 254, 0.25);
+            border-radius: 12px;
+            padding: 10px 18px;
+            color: #00F2FE !important;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: background 0.2s ease, box-shadow 0.2s ease;
+        }
+        .pl-add-show-btn:hover {
+            background: rgba(0, 242, 254, 0.12);
+            box-shadow: 0 0 14px rgba(0, 242, 254, 0.2);
+        }
+
+        /* =====================================================
+           SHOW GRID — 2 CỘT DESKTOP, 1 CỘT MOBILE
+        ===================================================== */
+        .pl-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        @media (max-width: 600px) {
+            .pl-grid { grid-template-columns: 1fr; }
+        }
+
+        /* =====================================================
+           SHOW CARD — Mỗi ô trong grid
+        ===================================================== */
+        .pl-show-card {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            background: rgba(255, 255, 255, 0.025);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 16px;
+            padding: 16px 18px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+            min-height: 90px;
+        }
+        .pl-show-card:hover {
+            background: rgba(0, 242, 254, 0.04) !important;
+            border-color: rgba(0, 242, 254, 0.18) !important;
+            box-shadow: 0 0 20px rgba(0, 242, 254, 0.06) !important;
+        }
+
+        /* Cover image thumbnail — 80x80 bo tròn */
+        .pl-show-thumb {
+            width: 80px;
+            height: 80px;
+            border-radius: 12px;
+            object-fit: cover;
+            flex-shrink: 0;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            background: linear-gradient(135deg, rgba(0,242,254,0.12) 0%, rgba(79,172,254,0.08) 100%);
+        }
+        /* Fallback placeholder khi không có ảnh */
+        .pl-show-thumb-placeholder {
+            width: 80px;
+            height: 80px;
+            border-radius: 12px;
+            flex-shrink: 0;
+            background: linear-gradient(135deg, rgba(0,242,254,0.10) 0%, rgba(79,172,254,0.06) 100%);
+            border: 1px solid rgba(0,242,254,0.12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+        }
+
+        /* Text info bên phải thumbnail */
+        .pl-show-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            overflow: hidden;
+        }
+        .pl-show-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #F1F5F9 !important;
+            line-height: 1.25;
+            /* Wrap tối đa 2 dòng */
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .pl-show-episodes {
+            font-size: 13px;
+            font-weight: 600;
+            color: #00F2FE !important;
+            letter-spacing: 0.1px;
+        }
+
+        /* Nút ⋯ góc phải trên */
+        .pl-show-more-btn {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            color: #3A5068 !important;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 6px;
+            transition: color 0.15s ease, background 0.15s ease;
+        }
+        .pl-show-more-btn:hover {
+            color: #00F2FE !important;
+            background: rgba(0,242,254,0.08);
+        }
+
+        /* =====================================================
+           LIST VIEW (Mobile) — 1 cột dạng row
+        ===================================================== */
+        .pl-list-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 6px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            position: relative;
+            transition: background 0.15s ease;
+        }
+        .pl-list-item:last-child { border-bottom: none; }
+        .pl-list-item:hover { background: rgba(255,255,255,0.02); border-radius: 10px; }
+
+        .pl-list-thumb {
+            width: 56px;
+            height: 56px;
+            border-radius: 10px;
+            object-fit: cover;
+            flex-shrink: 0;
+            border: 1px solid rgba(255,255,255,0.07);
+            background: linear-gradient(135deg, rgba(0,242,254,0.10), rgba(79,172,254,0.06));
+        }
+        .pl-list-thumb-placeholder {
+            width: 56px;
+            height: 56px;
+            border-radius: 10px;
+            flex-shrink: 0;
+            background: linear-gradient(135deg, rgba(0,242,254,0.10), rgba(79,172,254,0.06));
+            border: 1px solid rgba(0,242,254,0.12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        .pl-list-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            overflow: hidden;
+        }
+        .pl-list-title {
+            font-size: 14.5px;
+            font-weight: 700;
+            color: #F1F5F9 !important;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .pl-list-episodes {
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #00F2FE !important;
+        }
+        .pl-list-more-btn {
+            color: #3A5068 !important;
+            font-size: 18px;
+            flex-shrink: 0;
+            padding: 4px 6px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        /* =====================================================
+           EMPTY STATE — Khi chưa có show nào trong DB
+        ===================================================== */
+        .pl-empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #475569 !important;
+        }
+        .pl-empty-icon { font-size: 48px; margin-bottom: 14px; }
+        .pl-empty-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #94A3B8 !important;
+            margin-bottom: 8px;
+        }
+        .pl-empty-sub {
+            font-size: 14px;
+            color: #475569 !important;
+        }
+
+        /* =====================================================
+           LOADING STATE
+        ===================================================== */
+        .pl-loading-text {
+            text-align: center;
+            color: #64748B !important;
+            font-size: 14px;
+            padding: 30px 0;
+        }
+
+        /* =====================================================
+           SECTION HEADER (khi có thêm show mới)
+        ===================================================== */
+        .pl-section-label {
+            font-size: 13px;
+            font-weight: 700;
+            color: #475569 !important;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin: 16px 0 10px 4px;
+        }
+
+        /* =====================================================
+           INPUT BOX cho Add Show (expander nội dung)
+        ===================================================== */
+        /* Streamlit expander override cho sidebar context */
+        [data-testid="stExpander"] {
+            background: rgba(255,255,255,0.02) !important;
+            border: 1px solid rgba(255,255,255,0.07) !important;
+            border-radius: 14px !important;
+            margin-bottom: 20px !important;
+        }
+        [data-testid="stExpander"] summary {
+            color: #94A3B8 !important;
+            font-weight: 600 !important;
+        }
+
+    </style>
+    """, unsafe_allow_html=True)
+    logger.debug("✅ Podcast List CSS injected successfully.")
+
+# =====================================================
+# SHOW LIST VIEW CSS — THÊM MỚI (Milestone 2 - Show Library)
+# Quy tắc: CHỈ THÊM MỚI vào file — KHÔNG thay đổi code cũ
+# Tên CSS classes dùng tiền tố "sl-" để tránh xung đột
+# =====================================================
+def inject_show_list_css():
+    """
+    Inject CSS riêng cho màn hình Your Podcast Library (show_list_view).
+    Sử dụng prefix 'sl-' cho tất cả class names để tránh conflict với
+    các CSS đã có (.pl-, .db-, .sb-, v.v.).
+    CHỈ THÊM MỚI — không sửa inject_global_css(), inject_sidebar_css(),
+    inject_dashboard_css(), inject_podcast_list_css().
+    """
+    logger.debug("🎨 Injecting Show List CSS (sl- prefix) — Milestone 2.")
+    st.markdown("""
+    <style>
+        /* =====================================================
+           PAGE HEADER — "Your Podcast Library"
+        ===================================================== */
+        .sl-page-header {
+            margin-bottom: 20px;
+            padding-bottom: 4px;
+        }
+        .sl-page-title {
+            font-size: 28px;
+            font-weight: 800;
+            color: #F1F5F9 !important;
+            letter-spacing: -0.6px;
+            line-height: 1.15;
+            margin-bottom: 4px;
+        }
+        .sl-page-sub {
+            font-size: 14px;
+            color: #64748B !important;
+            font-weight: 400;
+        }
+
+        /* =====================================================
+           SHOW CARD — Grid item (desktop 2 cột)
+           Prefix sl- để không đụng .pl-show-card cũ
+        ===================================================== */
+        .sl-show-card {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            background: rgba(255, 255, 255, 0.025);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 16px;
+            padding: 16px 18px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+            min-height: 88px;
+            box-sizing: border-box;
+            margin-bottom: 2px;
+        }
+        .sl-show-card:hover {
+            background: rgba(0, 242, 254, 0.04) !important;
+            border-color: rgba(0, 242, 254, 0.18) !important;
+            box-shadow: 0 0 20px rgba(0, 242, 254, 0.06) !important;
+        }
+
+        /* Cover image thumbnail */
+        .sl-show-thumb {
+            width: 72px;
+            height: 72px;
+            border-radius: 12px;
+            object-fit: cover;
+            flex-shrink: 0;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+        }
+        /* Fallback placeholder emoji */
+        .sl-show-thumb-placeholder {
+            width: 72px;
+            height: 72px;
+            border-radius: 12px;
+            flex-shrink: 0;
+            background: linear-gradient(135deg, rgba(0,242,254,0.10) 0%, rgba(79,172,254,0.06) 100%);
+            border: 1px solid rgba(0,242,254,0.12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+        }
+
+        /* Text block bên phải thumbnail */
+        .sl-show-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            overflow: hidden;
+        }
+        .sl-show-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #F1F5F9 !important;
+            line-height: 1.3;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .sl-show-episodes {
+            font-size: 13px;
+            font-weight: 600;
+            color: #00F2FE !important;
+            letter-spacing: 0.1px;
+        }
+
+        /* Nút ⋯ góc phải trên card */
+        .sl-show-more-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            color: #3A5068 !important;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 6px;
+            transition: color 0.15s ease, background 0.15s ease;
+        }
+        .sl-show-more-btn:hover {
+            color: #00F2FE !important;
+            background: rgba(0,242,254,0.08);
+        }
+
+        /* =====================================================
+           OPEN BUTTON — Streamlit button overlay trên card
+           Dùng kỹ thuật negative margin-top giống sidebar nav
+        ===================================================== */
+        .sl-card-wrapper .stButton > button {
+            opacity: 0 !important;
+            position: absolute !important;
+            inset: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            cursor: pointer !important;
+            z-index: 5 !important;
+        }
+        .sl-card-wrapper {
+            position: relative;
+        }
+
+        /* =====================================================
+           EMPTY STATE
+        ===================================================== */
+        .sl-empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #475569 !important;
+        }
+        .sl-empty-icon { font-size: 52px; margin-bottom: 16px; }
+        .sl-empty-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #94A3B8 !important;
+            margin-bottom: 8px;
+        }
+        .sl-empty-sub {
+            font-size: 14px;
+            color: #475569 !important;
+            line-height: 1.5;
+        }
+
+        /* =====================================================
+           SEARCH INPUT — Override Streamlit text_input style
+           chỉ trong context màn hình show list
+        ===================================================== */
+        /* Không override global — chỉ nhắm vào block-container context */
+
+        /* =====================================================
+           ADD SHOW EXPANDER — Style riêng cho Show List
+        ===================================================== */
+        .sl-add-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            background: rgba(0, 242, 254, 0.04);
+            border: 1px solid rgba(0, 242, 254, 0.15);
+            border-radius: 14px;
+            margin-bottom: 16px;
+        }
+        .sl-add-icon { font-size: 18px; }
+        .sl-add-label {
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #00F2FE !important;
+        }
+
+        /* =====================================================
+           SECTION LABEL — "Your Shows", "Recently Added" v.v.
+        ===================================================== */
+        .sl-section-label {
+            font-size: 13px;
+            font-weight: 700;
+            color: #475569 !important;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin: 8px 0 12px 2px;
+        }
+
+    </style>
+    """, unsafe_allow_html=True)
+    logger.debug("✅ Show List CSS (sl-) injected successfully.")
