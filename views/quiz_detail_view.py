@@ -479,7 +479,7 @@ def _render_transcript_section(sentences: list):
         st.markdown(f'<div class="qd-sentence-progress"><span class="qd-sentence-progress-label">Câu {active_idx + 1}/{len(sentences)}</span></div>', unsafe_allow_html=True)
     with nav_col3:
         if active_idx < len(sentences) - 1:
-            if st.button("Tiếp →", key="qd_next_sent", use_container_width=True):
+            if st.button("Next →", key="qd_next_sent", use_container_width=True):
                 st.session_state["qd_active_sentence"] = active_idx + 1
                 st.rerun()
 
@@ -508,13 +508,7 @@ def _render_quiz_section(quiz_data: list, episode_id: str, user_id: str, audio_s
 
     submitted = st.session_state["qd_submitted"]
 
-    st.markdown(
-        '<div class="qd-section-header" style="margin-top: 10px; margin-bottom: 8px;">'
-        '<span class="qd-section-icon">❓</span>'
-        '<span class="qd-section-title">Question</span>'
-        '</div>',
-        unsafe_allow_html=True
-    )
+
 
     if submitted:
         _render_quiz_results(quiz_data, supabase_client, episode_id, user_id)
@@ -531,11 +525,20 @@ def _render_quiz_section(quiz_data: list, episode_id: str, user_id: str, audio_s
     q_num = q.get("question_number", current_q_idx + 1)
     q_text = q.get("question", "")
     options = q.get("options", {})
+    
+    st.markdown(
+        '<div class="qd-section-header" style="margin-top: 10px; margin-bottom: 8px;">'
+        '<span class="qd-section-icon">❓</span>'
+        '<span class="qd-section-title">Question</span>'
+        f'<span class="qd-quiz-progress-label">(Câu {current_q_idx + 1}/{total_q})</span>'
+        '</div>',
+        unsafe_allow_html=True
+    )
 
     # Progress bar câu hỏi gọn gàng
     st.markdown(
         f'<div class="qd-quiz-progress">'
-        f'<span class="qd-quiz-progress-label">Câu {current_q_idx + 1}/{total_q}</span>'
+        
         f'<div class="qd-quiz-progress-bar"><div class="qd-quiz-progress-fill" style="width:{int(((current_q_idx)/total_q)*100)}%"></div></div>'
         f'</div>',
         unsafe_allow_html=True
@@ -573,12 +576,12 @@ def _render_quiz_section(quiz_data: list, episode_id: str, user_id: str, audio_s
     nav_c1, nav_c2 = st.columns([1, 1])
     with nav_c1:
         if current_q_idx > 0:
-            if st.button("← Câu trước", key="qd_prev_q", use_container_width=True):
+            if st.button("← Previous Question", key="qd_prev_q", use_container_width=True):
                 st.session_state["qd_current_question"] = current_q_idx - 1
                 st.rerun()
     with nav_c2:
         if current_answer:
-            if st.button("Câu tiếp →", key="qd_next_q", use_container_width=True):
+            if st.button("Next Question →", key="qd_next_q", use_container_width=True):
                 if current_q_idx + 1 < total_q:
                     st.session_state["qd_current_question"] = current_q_idx + 1
                 else:
@@ -595,7 +598,7 @@ def _render_submit_button(quiz_data, episode_id, user_id, audio_start_time, supa
     st.markdown(
         f'<div class="qd-submit-preview">'
         f'<div class="qd-submit-icon">📝</div>'
-        f'<div class="qd-submit-title">Sẵn sàng nộp bài?</div>'
+        f'<div class="qd-submit-title">Submit?</div>'
         f'<div class="qd-submit-sub">Đã trả lời <strong>{answered_count}/{total_q}</strong> câu hỏi</div>'
         f'</div>',
         unsafe_allow_html=True
@@ -603,11 +606,11 @@ def _render_submit_button(quiz_data, episode_id, user_id, audio_start_time, supa
 
     col_review, col_submit = st.columns([1, 1])
     with col_review:
-        if st.button("← Xem lại", key="qd_review_btn", use_container_width=True):
+        if st.button("← Review", key="qd_review_btn", use_container_width=True):
             st.session_state["qd_current_question"] = 0
             st.rerun()
     with col_submit:
-        if st.button("✅ Nộp bài", key="qd_submit_btn", use_container_width=True, type="primary"):
+        if st.button("✅ Submit", key="qd_submit_btn", use_container_width=True, type="primary"):
             correct = 0
             for q in quiz_data:
                 q_num = str(q.get("question_number", ""))
