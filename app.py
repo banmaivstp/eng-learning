@@ -12,12 +12,14 @@ from modules.database import (
     get_user_analytics,
     evaluate_user_badges
 )
-from views.styles import inject_global_css, inject_sidebar_css, inject_dashboard_css, inject_sidebar_toggle_fix, inject_podcast_list_css, inject_show_list_css
+from views.styles import inject_global_css, inject_sidebar_css, inject_dashboard_css, inject_sidebar_toggle_fix, inject_podcast_list_css, inject_show_list_css, inject_podcast_list_view_css
 from views.dashboard_view import render_dashboard_screen
 # Import sidebar view độc lập vừa tách theo cấu trúc Milestone 1
 from views.sidebar_view import render_sidebar_navigation
 # Import show list view — Milestone 2 (Your Podcast Library)
 from views.show_list_view import render_podcast_discover_page
+# Import podcast list view — Milestone 2 (Episode List of a Show)
+from views.podcast_list_view import render_podcast_list_page
 
 # Khởi tạo Logger định danh cho luồng điều phối chính app
 logger = logging.getLogger("app_main")
@@ -43,6 +45,9 @@ inject_podcast_list_css()
 
 # --- INJECT SHOW LIST CSS (Milestone 2 — Your Podcast Library, prefix sl-) ---
 inject_show_list_css()
+
+# --- INJECT PODCAST LIST VIEW CSS (Milestone 2 — Episode List, prefix pcl-) ---
+inject_podcast_list_view_css()
 
 logger.debug("✅ app_main: All CSS injected. Sidebar toggle fix applied.")
 
@@ -86,6 +91,11 @@ else:
         # Màn hình Discover — Your Podcast Library
         logger.info("📻 app_main: Rendering Podcast Library (Discover page).")
         render_podcast_discover_page(supabase_client=supabase)
+
+    elif current_page == "Show Detail":
+        # Màn hình danh sách bài học (Episode List) của show đã chọn
+        logger.info("📋 app_main: Rendering Episode List (podcast_list_view).")
+        render_podcast_list_page(supabase_client=supabase)
 
     else:
         # --- NHÁNH HIỂN THỊ DANH SÁCH BÀI HỌC VÀ QUIZ FLOW GỐC CỦA HỆ THỐNG ---

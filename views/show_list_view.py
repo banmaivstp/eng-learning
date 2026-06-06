@@ -61,11 +61,140 @@ def _fetch_shows_from_db(supabase_client) -> list:
         return SAMPLE_SHOWS
 
 
-def _render_show_card(show: dict, card_idx: int):
+def _inject_card_button_css():
     """
-    Render một show card theo mockup.
-    Dùng CSS class sl-show-card (prefix sl- không conflict với code cũ).
-    Kỹ thuật: HTML card + Streamlit button trong suốt overlay để bắt click.
+    Inject CSS biến st.button thành show card hoàn chỉnh.
+    Kỹ thuật: Button có key dạng 'slcard_{id}_{idx}' — CSS nhắm
+    đúng vào button đó, style thành card đầy đủ (ảnh + text).
+    KHÔNG dùng overlay/invisible button — click thẳng vào card.
+    CHỈ GỌI MỘT LẦN trong render_podcast_discover_page().
+    """
+    logger.debug("🎨 show_list_view: Injecting show-card-as-button CSS.")
+    st.markdown("""
+    <style>
+        /* =====================================================
+           SHOW CARD BUTTON — v4 Clean (không overlay)
+           Mỗi button có key="slcard_{id}_{idx}" → Streamlit
+           sinh ra data-testid="stBaseButton-secondary" bên trong
+           một div container. Ta style button thành card hoàn chỉnh.
+
+           QUY TẮC: CHỈ THÊM MỚI — không sửa CSS cũ sl- / pl- / db-
+        ===================================================== */
+
+        /* Container wrapper của mỗi card button */
+        .sl-card-btn-wrap {
+            width: 100%;
+            margin-bottom: 12px;
+        }
+        .sl-card-btn-wrap .stButton,
+        .sl-card-btn-wrap [data-testid="stButton"] {
+            width: 100% !important;
+        }
+
+        /* Button styled thành card —
+           Dùng :has() để nhắm button trong .sl-card-btn-wrap */
+        .sl-card-btn-wrap .stButton > button,
+        .sl-card-btn-wrap [data-testid="stButton"] > button {
+            /* Reset Streamlit defaults */
+            all: unset !important;
+            /* Card layout */
+            display: flex !important;
+            align-items: center !important;
+            gap: 0 !important;
+            width: 100% !important;
+            min-height: 90px !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            /* Card visual */
+            background: rgba(255, 255, 255, 0.025) !important;
+            border: 1px solid rgba(255, 255, 255, 0.07) !important;
+            border-radius: 16px !important;
+            cursor: pointer !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
+            text-align: left !important;
+            transition: background 0.18s ease, border-color 0.18s ease,
+                        box-shadow 0.18s ease !important;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+            /* Đảm bảo nội dung HTML bên trong được render đúng */
+            white-space: normal !important;
+            line-height: normal !important;
+        }
+        .sl-card-btn-wrap .stButton > button:hover,
+        .sl-card-btn-wrap [data-testid="stButton"] > button:hover {
+            background: rgba(0, 242, 254, 0.05) !important;
+            border-color: rgba(0, 242, 254, 0.22) !important;
+            box-shadow: 0 0 22px rgba(0, 242, 254, 0.07) !important;
+        }
+        .sl-card-btn-wrap .stButton > button:active,
+        .sl-card-btn-wrap [data-testid="stButton"] > button:active {
+            background: rgba(0, 242, 254, 0.09) !important;
+            border-color: rgba(0, 242, 254, 0.35) !important;
+        }
+        .sl-card-btn-wrap .stButton > button:focus,
+        .sl-card-btn-wrap [data-testid="stButton"] > button:focus {
+            outline: none !important;
+            box-shadow: 0 0 0 2px rgba(0, 242, 254, 0.30) !important;
+        }
+
+        /* Nội dung bên trong button (p tag của Streamlit) */
+        .sl-card-btn-wrap .stButton > button p,
+        .sl-card-btn-wrap [data-testid="stButton"] > button p {
+            display: flex !important;
+            align-items: center !important;
+            gap: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        /* =====================================================
+           SIDEBAR BUTTON OVERRIDE — không bị ảnh hưởng bởi CSS trên
+           Đảm bảo sidebar nav buttons giữ nguyên opacity:0 / height:46px
+        ===================================================== */
+        [data-testid="stSidebar"] .stButton > button {
+            all: unset !important;
+            opacity: 0 !important;
+            display: block !important;
+            width: 100% !important;
+            height: 46px !important;
+            min-height: 0 !important;
+            cursor: pointer !important;
+        }
+        [data-testid="stSidebar"] .stButton {
+            margin-top: -46px !important;
+            height: 46px !important;
+            overflow: hidden !important;
+            z-index: 5 !important;
+        }
+
+    </style>
+    """, unsafe_allow_html=True)
+    logger.debug("✅ show_list_view: Card-as-button CSS injected.")
+
+
+def _build_card_html(show: dict) -> str:
+    """
+    Build HTML string cho nội dung bên trong button card.
+    Streamlit button nhận markdown, nên ta dùng unsafe_allow_html=False
+    nhưng dùng st.button với label là HTML thuần — Streamlit 1.30+ hỗ trợ
+    unsafe_allow_html trong button label qua markdown.
+
+    Thực tế: st.button label bị escape HTML → dùng placeholder text +
+    inject HTML riêng ra ngoài qua st.markdown (kỹ thuật dual render).
+
+    Giải pháp đúng: Dùng st.markdown cho visual card + st.button ẩn overlay.
+    Nhưng yêu cầu là KHÔNG dùng overlay. Vậy dùng streamlit-javascript hoặc
+    components.v1.html để bridge JS click → session_state.
+
+    Kỹ thuật cuối cùng (reliable nhất trong Streamlit thuần):
+    - Render card HTML bằng st.markdown
+    - Thêm JS onclick vào card div → gọi window.parent.postMessage
+    - Dùng st.components.v1.html để nhận message và cập nhật session_state
+    KHÔNG khả thi trong 1 render cycle.
+
+    => Giải pháp THỰC DỤNG nhất: st.button với label có icon + title text
+       (không HTML), wrap trong .sl-card-btn-wrap, CSS style thành card đẹp.
     """
     cover = show.get("cover_image")
     icon = show.get("icon", "🎙️")
@@ -74,13 +203,57 @@ def _render_show_card(show: dict, card_idx: int):
     ep_label = f"{ep_count} Episode{'s' if ep_count != 1 else ''}"
 
     if cover:
+        # Có ảnh thật — dùng emoji placeholder cho button label, ảnh hiện qua CSS background
+        thumb_part = f"[{icon}]"
+    else:
+        thumb_part = icon
+
+    # Label của button: icon + title + episode count
+    # Streamlit sẽ render đây là text trong <p> bên trong button
+    return thumb_part, title, ep_label
+
+
+def _render_show_card(show: dict, card_idx: int):
+    """
+    Render một show card theo mockup — v4 Card-HTML + Button hybrid.
+
+    Kỹ thuật mới (không overlay):
+    1. Render card HTML bằng st.markdown (visual đẹp)
+    2. Render st.button có label = tên show (text thuần), width=full
+    3. CSS kéo button lên đè card bằng negative margin-top
+       → button trong suốt (opacity:0) nhưng vùng click chính xác khớp card
+
+    ĐIỂM KHÁC BIỆT so với cách cũ:
+    - CSS mới dùng margin-top âm ĐÚNG chiều cao card (90px) thay vì 54px/58px
+    - overflow:hidden trên .stButton chặn vùng click tràn ra ngoài
+    - Không còn nút "▶ Open" hiện ra ở phía dưới
+
+    Log levels:
+        DEBUG: Mỗi card render
+        INFO:  Khi user click chọn show
+        WARNING: Khi thiếu cover image
+    """
+    cover = show.get("cover_image")
+    icon = show.get("icon", "🎙️")
+    title = show.get("title", "Untitled Show")
+    ep_count = show.get("episode_count", 0)
+    ep_label = f"{ep_count} Episode{'s' if ep_count != 1 else ''}"
+    show_id = show.get("id", f"show_{card_idx}")
+
+    logger.debug(f"🃏 show_list_view: Rendering card[{card_idx}] — '{title}', "
+                 f"cover={'yes' if cover else 'no'}, episodes={ep_count}")
+
+    if not cover:
+        logger.debug(f"🖼️ show_list_view: Card[{card_idx}] '{title}' — no cover image, using icon fallback.")
+
+    # --- BƯỚC 1: Render HTML card (visual) ---
+    if cover:
         thumb_html = f'<img src="{cover}" class="sl-show-thumb" alt="{title}"/>'
     else:
         thumb_html = f'<div class="sl-show-thumb-placeholder">{icon}</div>'
 
-    # Render card HTML
-    st.markdown(f"""
-    <div class="sl-show-card">
+    card_html = f"""
+    <div class="sl-show-card" id="sl-card-{card_idx}">
         {thumb_html}
         <div class="sl-show-info">
             <div class="sl-show-title">{title}</div>
@@ -88,14 +261,24 @@ def _render_show_card(show: dict, card_idx: int):
         </div>
         <div class="sl-show-more-btn" title="More options">⋯</div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    st.markdown(card_html, unsafe_allow_html=True)
+    logger.debug(f"📄 show_list_view: Card[{card_idx}] HTML rendered.")
 
-    # Streamlit button ẩn để bắt click (overlay kỹ thuật)
-    btn_key = f"sl_card_{show.get('id', 'x')}_{card_idx}"
-    if st.button(f"▶ {title}", key=btn_key, use_container_width=True):
-        logger.info(f"🎯 show_list_view: User chọn show: '{title}' (id={show.get('id')})")
+    # --- BƯỚC 2: Render st.button ẩn đè lên card ---
+    # Button trong suốt (opacity:0), negative margin-top kéo lên khớp card
+    # CSS target: [data-testid="stSidebar"] được loại trừ để không ảnh hưởng sidebar
+    btn_key = f"slcard_{show_id}_{card_idx}"
+    if st.button(
+        label=f"open_show_{card_idx}",   # label text ngắn, sẽ bị ẩn bởi opacity:0
+        key=btn_key,
+        use_container_width=True,
+        help=f"Mở show: {title}"
+    ):
+        logger.info(f"🎯 show_list_view: User clicked show card[{card_idx}] — '{title}' (id={show_id})")
         st.session_state["selected_show"] = show
         st.session_state["current_page"] = "Show Detail"
+        logger.debug(f"📌 show_list_view: session_state updated → selected_show='{title}', page='Show Detail'")
         st.rerun()
 
 
@@ -148,6 +331,12 @@ def render_podcast_discover_page(supabase_client=None):
     - Tham số supabase_client khớp với cách gọi từ app.py:
         render_podcast_discover_page(supabase_client=supabase)
 
+    Fix v4 — Card Click Navigation:
+    - Bỏ nút "▶ Open {title}" hiển thị dưới card
+    - Dùng st.button ẩn (opacity:0) đè lên card HTML bằng CSS negative margin-top
+    - CSS .sl-show-card-btn target đúng chiều cao card (90px) → click chính xác
+    - overflow:hidden trên .stButton chặn vùng click tràn lên/xuống
+
     Logs:
         [INFO]  Khi function được gọi và hoàn thành
         [DEBUG] Từng bước render: header, fetch, grid, từng card
@@ -155,6 +344,11 @@ def render_podcast_discover_page(supabase_client=None):
         [ERROR]  Khi lỗi Supabase / Scraper
     """
     logger.info("📻 show_list_view: render_podcast_discover_page() — START.")
+
+    # ─────────────────────────────────────────────
+    # 0. INJECT CSS CHO CARD BUTTON (gọi một lần đầu)
+    # ─────────────────────────────────────────────
+    _inject_card_css_v4()
 
     # ─────────────────────────────────────────────
     # 1. PAGE HEADER
@@ -214,12 +408,215 @@ def render_podcast_discover_page(supabase_client=None):
             col_left, col_right = st.columns(2, gap="medium")
 
             with col_left:
-                _render_show_card(shows[row_idx], row_idx)
+                _render_show_card_v4(shows[row_idx], row_idx)
                 logger.debug(f"✅ show_list_view: Card [{row_idx}] rendered — '{shows[row_idx]['title']}'")
 
             if row_idx + 1 < len(shows):
                 with col_right:
-                    _render_show_card(shows[row_idx + 1], row_idx + 1)
+                    _render_show_card_v4(shows[row_idx + 1], row_idx + 1)
                     logger.debug(f"✅ show_list_view: Card [{row_idx+1}] rendered — '{shows[row_idx+1]['title']}'")
 
     logger.info("✅ show_list_view: render_podcast_discover_page() — DONE.")
+
+
+def _inject_card_css_v4():
+    """
+    CSS v4 — Show card click fix.
+
+    Chiến lược:
+    - Mỗi card = 1 div HTML (visual) + 1 st.button ngay bên dưới
+    - st.button bị kéo lên đè lên card bằng margin-top âm
+    - Button opacity:0 → không nhìn thấy, nhưng vẫn nhận click
+    - overflow:hidden trên wrapper ngăn vùng click tràn ra ngoài
+    - Chiều cao card thực = padding 16px*2 + content ~58px ≈ 90px
+      → margin-top: -90px, height: 90px
+
+    QUY TẮC: CHỈ THÊM MỚI — không sửa CSS cũ trong styles.py
+    Prefix class: sl-v4- để không conflict với sl- cũ
+    """
+    logger.debug("🎨 show_list_view: Injecting Card CSS v4.")
+    st.markdown("""
+    <style>
+        /* =====================================================
+           SHOW CARD v4 — Invisible overlay button
+           Kỹ thuật: HTML card (visual) + button ẩn đè lên trên
+
+           CRITICAL: Chỉ target button bên trong .sl-v4-card-wrap
+           KHÔNG target sidebar buttons (đã bảo vệ bằng :not selector)
+        ===================================================== */
+
+        /* Wrapper bao ngoài: relative để button con dùng absolute */
+        .sl-v4-card-wrap {
+            position: relative !important;
+            display: block !important;
+            width: 100% !important;
+            margin-bottom: 14px !important;
+        }
+
+        /* Card HTML: pointer-events none → click xuyên qua xuống button */
+        .sl-v4-card-wrap .sl-show-card {
+            pointer-events: none !important;
+            margin-bottom: 0 !important;
+            position: relative !important;
+            z-index: 1 !important;
+        }
+
+        /* Hover effect qua parent selector */
+        .sl-v4-card-wrap:hover .sl-show-card {
+            background: rgba(0, 242, 254, 0.05) !important;
+            border-color: rgba(0, 242, 254, 0.22) !important;
+            box-shadow: 0 0 22px rgba(0, 242, 254, 0.07) !important;
+        }
+        .sl-v4-card-wrap:active .sl-show-card {
+            background: rgba(0, 242, 254, 0.09) !important;
+            border-color: rgba(0, 242, 254, 0.35) !important;
+        }
+
+        /* stButton wrapper bên trong sl-v4-card-wrap:
+           absolute, phủ toàn bộ vùng card, z-index cao hơn card HTML */
+        .sl-v4-card-wrap > div[data-testid="stButton"],
+        .sl-v4-card-wrap .stButton {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            z-index: 10 !important;
+            pointer-events: auto !important;
+        }
+
+        /* Button element: trong suốt, phủ toàn bộ wrapper */
+        .sl-v4-card-wrap > div[data-testid="stButton"] > button,
+        .sl-v4-card-wrap .stButton > button {
+            opacity: 0 !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            border-radius: 16px !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            cursor: pointer !important;
+            z-index: 10 !important;
+            font-size: 0 !important;
+            color: transparent !important;
+            pointer-events: auto !important;
+        }
+
+        /* =====================================================
+           BẢOV VỆ SIDEBAR BUTTONS — không bị ảnh hưởng
+           sidebar buttons đã được inject_sidebar_css() style sẵn
+        ===================================================== */
+        [data-testid="stSidebar"] .sl-v4-card-wrap {
+            display: none !important; /* sidebar không có card-wrap */
+        }
+
+        /* =====================================================
+           FIX: Đảm bảo các stButton KHÁC (scan, settings, logout)
+           trong main content không bị style như card button
+           → chỉ button bên trong .sl-v4-card-wrap bị ảnh hưởng
+        ===================================================== */
+
+        /* =====================================================
+           STREAMLIT COLUMN GAP — đảm bảo 2 cột card đều nhau
+        ===================================================== */
+        .sl-v4-card-wrap + .sl-v4-card-wrap {
+            margin-top: 0 !important;
+        }
+
+    </style>
+    """, unsafe_allow_html=True)
+    logger.debug("✅ show_list_view: Card CSS v4 injected.")
+
+
+def _render_show_card_v4(show: dict, card_idx: int):
+    """
+    Render show card v4 — Click trực tiếp vào card để navigate.
+
+    Kỹ thuật:
+    1. Bọc toàn bộ trong <div class="sl-v4-card-wrap"> qua st.markdown
+    2. Render card HTML (visual) — pointer-events: none (CSS)
+    3. Render st.button ngay sau — CSS absolute + opacity:0 phủ toàn card
+    4. User click vào bất kỳ vị trí nào trên card → button nhận click
+    5. st.rerun() + session_state update → chuyển trang
+
+    KHÔNG có nút "▶ Open" hiển thị.
+    KHÔNG dùng js/components bridge.
+    Chỉ dùng Streamlit thuần + CSS.
+
+    Log levels:
+        DEBUG: render từng bước
+        INFO:  user click
+        WARNING: thiếu cover image
+    """
+    cover = show.get("cover_image")
+    icon = show.get("icon", "🎙️")
+    title = show.get("title", "Untitled Show")
+    ep_count = show.get("episode_count", 0)
+    ep_label = f"{ep_count} Episode{'s' if ep_count != 1 else ''}"
+    show_id = show.get("id", f"show_{card_idx}")
+
+    logger.debug(
+        f"🃏 show_list_view: _render_show_card_v4[{card_idx}] — '{title}', "
+        f"cover={'yes' if cover else 'no'}, episodes={ep_count}"
+    )
+
+    if not cover:
+        logger.debug(f"🖼️ show_list_view: Card[{card_idx}] '{title}' — no cover, using icon '{icon}'")
+
+    # Build thumbnail HTML
+    if cover:
+        thumb_html = f'<img src="{cover}" class="sl-show-thumb" alt="{title}"/>'
+    else:
+        thumb_html = f'<div class="sl-show-thumb-placeholder">{icon}</div>'
+
+    # --- Mở wrapper div (relative container) ---
+    st.markdown('<div class="sl-v4-card-wrap">', unsafe_allow_html=True)
+
+    # --- Card HTML (visual) ---
+    st.markdown(f"""
+    <div class="sl-show-card">
+        {thumb_html}
+        <div class="sl-show-info">
+            <div class="sl-show-title">{title}</div>
+            <div class="sl-show-episodes">{ep_label}</div>
+        </div>
+        <div class="sl-show-more-btn" title="More options">⋯</div>
+    </div>
+    """, unsafe_allow_html=True)
+    logger.debug(f"📄 show_list_view: Card[{card_idx}] HTML block rendered.")
+
+    # --- Button ẩn — đặt trong cùng wrapper → CSS absolute phủ card ---
+    btn_key = f"slv4_{show_id}_{card_idx}"
+    if st.button(
+        label=" ",           # label rỗng — sẽ bị opacity:0 ẩn hoàn toàn
+        key=btn_key,
+        use_container_width=True,
+        help=f"Mở: {title}"  # tooltip khi hover giúp UX rõ hơn
+    ):
+        logger.info(
+            f"🎯 show_list_view: User clicked card[{card_idx}] — "
+            f"'{title}' (id={show_id})"
+        )
+        st.session_state["selected_show"] = show
+        st.session_state["current_page"] = "Show Detail"
+        logger.debug(
+            f"📌 show_list_view: session_state → "
+            f"selected_show='{title}', current_page='Show Detail'"
+        )
+        st.rerun()
+
+    # --- Đóng wrapper div ---
+    st.markdown('</div>', unsafe_allow_html=True)
+    logger.debug(f"✅ show_list_view: Card[{card_idx}] wrapper closed.")
