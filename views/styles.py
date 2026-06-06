@@ -2135,3 +2135,655 @@ def inject_podcast_list_view_css():
     </style>
     """, unsafe_allow_html=True)
     _logger.debug("✅ Podcast List View CSS (pcl-) injected successfully.")
+
+
+
+# =====================================================
+# QUIZ DETAIL VIEW CSS — THÊM MỚI (Milestone 3+4+5)
+# Quy tắc: CHỈ THÊM MỚI vào file — KHÔNG thay đổi code cũ
+# Màn hình: Audio Player + Transcript Highlight + Quiz Tapping
+# Prefix CSS: "qd-" (quiz_detail)
+# =====================================================
+def inject_quiz_detail_css():
+    """
+    Inject CSS riêng cho màn hình Quiz Detail — Audio Player + Transcript + Quiz.
+    Prefix 'qd-' để tránh conflict với sl-, pl-, db-, sb-, pcl-.
+    CHỌ THÊM MỚI — không sửa bất kỳ hàm inject_*_css() cũ nào.
+    Milestone 3: Audio Player custom HTML5
+    Milestone 4: Transcript Highlight interactive
+    Milestone 5: Quiz Tapping large tap targets
+    """
+    logger.debug("🎨 Injecting Quiz Detail CSS (qd- prefix) — Milestone 3+4+5.")
+    st.markdown("""
+    <style>
+        /* =====================================================
+           BACK ROW — nút quay lại đầu màn hình
+        ===================================================== */
+        .qd-back-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+            cursor: pointer;
+            width: fit-content;
+        }
+        .qd-back-arrow {
+            font-size: 18px;
+            color: #64748B !important;
+        }
+        .qd-back-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #64748B !important;
+        }
+        .qd-back-row:hover .qd-back-arrow,
+        .qd-back-row:hover .qd-back-label {
+            color: #00F2FE !important;
+        }
+
+        /* Back button Streamlit — ẩn, dùng HTML làm visual */
+        .qd-back-row + div[data-testid="stButton"] > button {
+            opacity: 0 !important;
+            height: 28px !important;
+            min-height: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            background: transparent !important;
+            margin-top: -28px !important;
+            width: 200px !important;
+            font-size: 0 !important;
+        }
+
+        /* =====================================================
+           PLAYER SECTION WRAPPER
+        ===================================================== */
+        .qd-player-section {
+            margin-bottom: 18px;
+        }
+
+        /* =====================================================
+           SECTION HEADER — "Transcript", "Question"
+        ===================================================== */
+        .qd-section-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .qd-section-icon {
+            font-size: 18px;
+            line-height: 1;
+        }
+        .qd-section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #F1F5F9 !important;
+            letter-spacing: -0.2px;
+        }
+
+        /* Hide/Show button style */
+        .qd-transcript-section button[kind="secondary"] {
+            background: rgba(255,255,255,0.04) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            color: #64748B !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            padding: 4px 10px !important;
+            border-radius: 8px !important;
+            min-height: 30px !important;
+        }
+        .qd-transcript-section button[kind="secondary"]:hover {
+            color: #00F2FE !important;
+            border-color: rgba(0,242,254,0.3) !important;
+        }
+
+        /* =====================================================
+           TRANSCRIPT BOX — scrollable container
+        ===================================================== */
+        .qd-transcript-box {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 16px;
+            padding: 12px 4px;
+            max-height: 280px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+            /* Scrollbar styling */
+            scrollbar-width: thin;
+            scrollbar-color: rgba(0,242,254,0.2) transparent;
+        }
+        .qd-transcript-box::-webkit-scrollbar {
+            width: 4px;
+        }
+        .qd-transcript-box::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .qd-transcript-box::-webkit-scrollbar-thumb {
+            background: rgba(0,242,254,0.2);
+            border-radius: 2px;
+        }
+
+        /* =====================================================
+           SENTENCE ROW — từng dòng transcript, update: gap: 12px;margin-bottom: 2px;
+        ===================================================== */
+        .qd-sentence-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 5px;
+            padding: 8px 14px;
+            border-radius: 10px;
+            margin-bottom: 0px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            border-left: 3px solid transparent;
+        }
+        .qd-sentence-row:hover {
+            background: rgba(255,255,255,0.03) !important;
+        }
+
+        /* Active sentence — highlight neon cyan */
+        .qd-sentence-active {
+            background: rgba(0,242,254,0.07) !important;
+            border-left-color: #00F2FE !important;
+        }
+        .qd-sentence-active .qd-sentence-text {
+            color: #00F2FE !important;
+            font-weight: 700 !important;
+        }
+        .qd-sentence-active .qd-timestamp {
+            color: #00F2FE !important;
+            opacity: 0.8;
+        }
+
+        /* Inactive sentence — mờ nhẹ */
+        .qd-sentence-inactive .qd-sentence-text {
+            color: #94A3B8 !important;
+            font-weight: 400 !important;
+        }
+        .qd-sentence-inactive .qd-timestamp {
+            color: #3A5068 !important;
+        }
+
+        .qd-timestamp {
+            font-size: 12px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            flex-shrink: 0;
+            margin-top: 2px;
+            min-width: 36px;
+            letter-spacing: 0.2px;
+        }
+        .qd-sentence-text {
+            font-size: 14.5px;
+            line-height: 1.55;
+            transition: color 0.15s ease, font-weight 0.15s ease;
+        }
+
+        /* =====================================================
+           SENTENCE NAVIGATION
+        ===================================================== */
+        .qd-sentence-progress {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .qd-sentence-progress-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #64748B !important;
+        }
+
+        /* Prev/Next buttons */
+        .qd-transcript-section .stButton > button {
+            background: rgba(255,255,255,0.04) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            color: #94A3B8 !important;
+            font-size: 13px !important;
+            font-weight: 600 !important;
+            border-radius: 10px !important;
+            min-height: 36px !important;
+            transition: all 0.15s ease !important;
+        }
+        .qd-transcript-section .stButton > button:hover {
+            background: rgba(0,242,254,0.06) !important;
+            border-color: rgba(0,242,254,0.25) !important;
+            color: #00F2FE !important;
+        }
+
+        /* =====================================================
+           QUIZ SECTION WRAPPER : margin-top: 4px;
+        ===================================================== */
+        .qd-quiz-section {
+            margin-top: 0px;
+        }
+
+        /* =====================================================
+           QUIZ PROGRESS BAR: margin-bottom: 14px;
+        ===================================================== */
+        .qd-quiz-progress {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 4px;
+        }
+        .qd-quiz-progress-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: #475569 !important;
+            white-space: nowrap;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .qd-quiz-progress-bar {
+            flex: 1;
+            height: 4px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .qd-quiz-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00F2FE, #4FACFE);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        /* =====================================================
+           QUESTION TEXT
+        ===================================================== */
+        .qd-question-text {
+            font-size: 17px;
+            font-weight: 700;
+            color: #F1F5F9 !important;
+            line-height: 1.5;
+            margin-bottom: 16px;
+            letter-spacing: -0.2px;
+        }
+
+        /* =====================================================
+           OPTION CARDS — Tapping targets lớn, tương phản cao
+        ===================================================== */
+        .qd-option-card {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            background: rgba(255,255,255,0.03);
+            border: 1.5px solid rgba(255,255,255,0.07);
+            border-radius: 14px;
+            padding: 14px 18px;
+            margin-bottom: 2px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            min-height: 54px;
+        }
+        .qd-option-card:hover {
+            background: rgba(0,242,254,0.05) !important;
+            border-color: rgba(0,242,254,0.25) !important;
+        }
+
+        /* Selected option — filled neon border */
+        .qd-option-selected {
+            background: rgba(0,242,254,0.10) !important;
+            border-color: rgba(0,242,254,0.55) !important;
+            box-shadow: 0 0 0 1px rgba(0,242,254,0.15), 0 0 16px rgba(0,242,254,0.12) !important;
+        }
+        .qd-option-selected .qd-option-key {
+            background: #00F2FE !important;
+            color: #020617 !important;
+        }
+        .qd-option-selected .qd-option-text {
+            color: #E0F7FA !important;
+            font-weight: 700 !important;
+        }
+
+        .qd-option-key {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 800;
+            color: #94A3B8 !important;
+            flex-shrink: 0;
+            letter-spacing: 0;
+            transition: all 0.15s ease;
+        }
+        .qd-option-text {
+            font-size: 15px;
+            font-weight: 500;
+            color: #CBD5E1 !important;
+            line-height: 1.4;
+            transition: color 0.15s ease, font-weight 0.15s ease;
+        }
+
+        /* Streamlit buttons beneath option cards — invisible overlay */
+        .qd-quiz-section .stButton > button {
+            opacity: 0 !important;
+            height: 58px !important;
+            min-height: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            cursor: pointer !important;
+            width: 100% !important;
+            margin-top: -62px !important;
+            margin-bottom: 1px !important;
+            font-size: 0 !important;
+        }
+
+        /* Nav buttons (Câu trước / Câu tiếp) — visible */
+        .qd-quiz-section [data-testid="stButton"]:has(button[data-testid="stBaseButton-secondary"]):not(:has(button[style])) {
+            /* keep visible — only overlay option buttons */
+        }
+
+        /* =====================================================
+           SUBMIT PREVIEW SCREEN
+        ===================================================== */
+        .qd-submit-preview {
+            text-align: center;
+            padding: 30px 20px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 18px;
+            margin-bottom: 16px;
+        }
+        .qd-submit-icon {
+            font-size: 44px;
+            margin-bottom: 10px;
+        }
+        .qd-submit-title {
+            font-size: 20px;
+            font-weight: 800;
+            color: #F1F5F9 !important;
+            margin-bottom: 6px;
+        }
+        .qd-submit-sub {
+            font-size: 14px;
+            color: #64748B !important;
+        }
+        .qd-submit-sub strong {
+            color: #00F2FE !important;
+        }
+
+        /* =====================================================
+           RESULT CARD
+        ===================================================== */
+        .qd-result-card {
+            background: linear-gradient(135deg, rgba(0,242,254,0.06) 0%, rgba(10,20,40,0.95) 100%);
+            border: 1px solid rgba(0,242,254,0.22);
+            border-radius: 20px;
+            padding: 28px 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            box-shadow: 0 0 30px rgba(0,242,254,0.08);
+        }
+        .qd-result-icon {
+            font-size: 52px;
+            margin-bottom: 10px;
+            filter: drop-shadow(0 0 12px rgba(0,242,254,0.4));
+        }
+        .qd-result-score {
+            font-size: 56px;
+            font-weight: 900;
+            color: #00F2FE !important;
+            letter-spacing: -2px;
+            line-height: 1;
+            margin-bottom: 6px;
+        }
+        .qd-result-label {
+            font-size: 18px;
+            font-weight: 700;
+            color: #F1F5F9 !important;
+            margin-bottom: 6px;
+        }
+        .qd-result-detail {
+            font-size: 14px;
+            color: #64748B !important;
+        }
+
+        /* =====================================================
+           ANSWER REVIEW CARDS
+        ===================================================== */
+        .qd-answer-card {
+            background: rgba(255,255,255,0.025);
+            border-radius: 14px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            border-left: 4px solid transparent;
+        }
+        .qd-answer-correct {
+            border-left-color: #22C55E !important;
+            background: rgba(34,197,94,0.05) !important;
+        }
+        .qd-answer-wrong {
+            border-left-color: #EF4444 !important;
+            background: rgba(239,68,68,0.05) !important;
+        }
+        .qd-answer-q {
+            font-size: 14px;
+            font-weight: 700;
+            color: #F1F5F9 !important;
+            margin-bottom: 6px;
+            line-height: 1.4;
+        }
+        .qd-answer-detail {
+            font-size: 13px;
+            color: #94A3B8 !important;
+            margin-bottom: 6px;
+        }
+        .qd-answer-detail strong {
+            color: #F1F5F9 !important;
+        }
+        .qd-answer-explain {
+            font-size: 13px;
+            color: #64748B !important;
+            line-height: 1.5;
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.02);
+            border-radius: 8px;
+        }
+
+        /* =====================================================
+           EMPTY STATES
+        ===================================================== */
+        .qd-empty-quiz {
+            text-align: center;
+            padding: 40px 20px;
+            color: #475569 !important;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        /* =====================================================
+           QUIZ SECTION — Nav buttons style override
+           (Visible buttons cho navigation giữa câu hỏi)
+        ===================================================== */
+        .qd-quiz-section .stButton:last-of-type > button,
+        .qd-quiz-section .stButton:nth-last-of-type(2) > button {
+            /* Reset về visible cho nav buttons cuối section */
+            opacity: 1 !important;
+            margin-top: 0 !important;
+            height: auto !important;
+            min-height: 40px !important;
+            font-size: 13px !important;
+            background: rgba(255,255,255,0.04) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            color: #94A3B8 !important;
+            font-weight: 600 !important;
+            border-radius: 10px !important;
+            margin-bottom: 0px !important;
+            padding: 8px 14px !important;
+        }
+
+        /* Submit button — primary */
+        .qd-quiz-section button[kind="primary"] {
+            opacity: 1 !important;
+            margin-top: 0 !important;
+            height: auto !important;
+            min-height: 46px !important;
+            background: linear-gradient(135deg, #00F2FE 0%, #4FACFE 100%) !important;
+            color: #020617 !important;
+            font-weight: 800 !important;
+            font-size: 15px !important;
+            border: none !important;
+            border-radius: 12px !important;
+            box-shadow: 0 0 20px rgba(0,242,254,0.3) !important;
+        }
+        .qd-quiz-section button[kind="primary"]:hover {
+            box-shadow: 0 0 30px rgba(0,242,254,0.5) !important;
+        }
+
+        /* Retry button */
+        .qd-quiz-section .stButton:last-child > button {
+            opacity: 1 !important;
+            margin-top: 0 !important;
+            height: auto !important;
+            min-height: 44px !important;
+            font-size: 14px !important;
+            background: rgba(255,255,255,0.04) !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+            color: #94A3B8 !important;
+            border-radius: 12px !important;
+            font-weight: 600 !important;
+        }
+
+        /* =====================================================
+           RESPONSIVE — Mobile
+        ===================================================== */
+        @media (max-width: 600px) {
+            .qd-question-text { font-size: 15px !important; }
+            .qd-option-text { font-size: 14px !important; }
+            .qd-result-score { font-size: 44px !important; }
+            .qd-sentence-text { font-size: 13.5px !important; }
+            .qd-option-card { padding: 12px 14px !important; min-height: 50px !important; }
+        }
+
+    </style>
+    """, unsafe_allow_html=True)
+    logger.debug("✅ Quiz Detail CSS (qd-) injected successfully.")
+
+
+# =====================================================
+# PATCH v20260606: Quiz Detail View UI Fixes
+# CHỈ THÊM MỚI — không sửa code cũ để tránh ảnh hưởng UI Login/các màn khác
+# Fixes:
+#   1. Ẩn hoàn toàn back button text Streamlit dưới back row HTML (chống overlap)
+#   2. Rút gọn chiều cao player (height 195px → compact)
+#   3. Chuyển quiz options sang dạng radio button thuần — bỏ duplicate text
+#   4. Ẩn inline option card HTML, chỉ hiện Streamlit radio-style buttons
+# =====================================================
+
+def inject_quiz_detail_patch_css():
+    """
+    CSS patch bổ sung cho quiz_detail_view — áp dụng SAU inject_quiz_detail_css().
+    Chỉ thêm mới, không sửa bất kỳ selector cũ nào.
+    v20260606-r2: radio row overlay + compact player fix
+    """
+    logger.debug("🎨 Injecting Quiz Detail PATCH CSS (v20260606-r2).")
+    st.markdown("""
+    <style>
+        /* =====================================================
+           FIX 1: ẨN DUPLICATE BACK BUTTON
+        ===================================================== */
+        .qd-back-row ~ div[data-testid="stButton"] > button,
+        .qd-back-row + div > div[data-testid="stButton"] > button {
+            opacity: 0 !important;
+            pointer-events: auto !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 160px !important;
+            height: 32px !important;
+            min-height: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            font-size: 0 !important;
+            cursor: pointer !important;
+            z-index: 10 !important;
+        }
+
+        /* =====================================================
+           FIX 2: COMPACT PLAYER IFRAME HEIGHT
+        ===================================================== */
+        .qd-player-section iframe,
+        .qd-player-section [data-testid="stCustomComponentV1"] iframe {
+            max-height: 190px !important;
+        }
+
+        /* =====================================================
+           FIX 3: RADIO ROW — invisible Streamlit button overlay
+           Mỗi option: HTML radio row (hiện) + st.button ẩn overlay lên trên để nhận click
+           Button cao 42px (= chiều cao radio row) và margin-top âm để kéo lên đúng vị trí
+        ===================================================== */
+        .qd-quiz-section .stButton > button {
+            opacity: 0 !important;
+            pointer-events: auto !important;
+            height: 42px !important;
+            min-height: 0 !important;
+            padding: 0 !important;
+            margin-top: -44px !important;
+            margin-bottom: 0px !important;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            font-size: 0 !important;
+            cursor: pointer !important;
+            width: 100% !important;
+            display: block !important;
+            border-radius: 8px !important;
+        }
+
+        /* =====================================================
+           FIX 4: NAV BUTTONS (← Câu trước / Câu tiếp →) — visible
+        ===================================================== */
+        .qd-quiz-nav .stButton > button {
+            opacity: 1 !important;
+            margin-top: 8px !important;
+            height: auto !important;
+            min-height: 40px !important;
+            font-size: 13px !important;
+            background: rgba(255,255,255,0.04) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            color: #94A3B8 !important;
+            font-weight: 600 !important;
+            border-radius: 10px !important;
+            margin-bottom: 4px !important;
+            padding: 8px 14px !important;
+            pointer-events: auto !important;
+            cursor: pointer !important;
+        }
+        .qd-quiz-nav .stButton > button:hover {
+            background: rgba(0,242,254,0.06) !important;
+            border-color: rgba(0,242,254,0.25) !important;
+            color: #00F2FE !important;
+        }
+
+        /* =====================================================
+           FIX 5: SUBMIT + RETRY buttons — visible, cũ: min-height: 40px, font-size: 15px
+        ===================================================== */
+        .qd-quiz-section button[kind="primary"] {
+            opacity: 1 !important;
+            margin-top: 0 !important;
+            height: auto !important;
+            min-height: 40px !important;
+            background: linear-gradient(135deg, #00F2FE 0%, #4FACFE 100%) !important;
+            color: #020617 !important;
+            font-weight: 800 !important;
+            font-size: 13px !important;
+            border: none !important;
+            border-radius: 12px !important;
+            box-shadow: 0 0 20px rgba(0,242,254,0.3) !important;
+            pointer-events: auto !important;
+        }
+
+    </style>
+    """, unsafe_allow_html=True)
+    logger.debug("✅ Quiz Detail PATCH CSS (v20260606-r2) injected.")

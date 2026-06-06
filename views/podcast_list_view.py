@@ -163,7 +163,7 @@ def render_podcast_list_page(supabase_client=None):
     if not selected_show:
         logger.warning("⚠️ podcast_list_view: Không có selected_show trong session. Redirect về show list.")
         st.warning("Không có show nào được chọn. Vui lòng quay lại thư viện.")
-        if st.button("← Quay lại thư viện", key="pcl_back_no_show"):
+        if st.button("← Your Library", key="pcl_back_no_show"):
             st.session_state["current_page"] = "Học tập"
             st.rerun()
         return
@@ -179,16 +179,10 @@ def render_podcast_list_page(supabase_client=None):
     # 1. PAGE HEADER — Back button + Show info
     # ─────────────────────────────────────────────
 
-    # Nút quay lại thư viện
-    st.markdown("""
-    <div class="pcl-back-row">
-        <span class="pcl-back-arrow">←</span>
-        <span class="pcl-back-label">Your Library</span>
-    </div>
-    """, unsafe_allow_html=True)
+    # Đã xoá đoạn HTML hiển thị text tĩnh để tránh trùng lặp chữ (Yêu cầu số 1)
 
-    # Streamlit button invisible overlay nút back
-    if st.button("← Thư viện", key="pcl_back_btn", use_container_width=False):
+    # Đổi chữ hiển thị của Streamlit Button thành "← Your Library" (Yêu cầu số 2)
+    if st.button("← Your Library", key="pcl_back_btn", use_container_width=False):
         logger.info("📌 podcast_list_view: User quay lại show list.")
         st.session_state["current_page"] = "Học tập"
         st.rerun()
@@ -199,8 +193,6 @@ def render_podcast_list_page(supabase_client=None):
         if show_cover
         else '<div class="pcl-header-cover-placeholder">📚</div>'
     )
-
-    ep_count_label = f"{show_ep_count} bài học" if show_ep_count else "bài học"
 
     st.markdown(f"""
     <div class="pcl-page-header">
