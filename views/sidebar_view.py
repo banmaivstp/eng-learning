@@ -119,7 +119,7 @@ def render_sidebar_navigation(supabase_client=None):
     )
 
     # Mockup: Pro badge (cyan) ở trên, streak badge ở dưới (nếu có)
-    streak_display = f'<div class="sb-streak-badge">🔥 {streak_count} ngày</div>' if streak_count > 0 else ""
+    streak_display = f'<div class="sb-streak-badge">🔥 {streak_count} ngày</div>' 
 
     st.sidebar.markdown(f"""
     <div class="sb-profile-section">
@@ -128,12 +128,13 @@ def render_sidebar_navigation(supabase_client=None):
         </div>
         <div class="sb-profile-info">
             <div class="sb-user-name">{user_name}</div>
-            <div class="sb-pro-badge">👑 Pro</div>
-            {streak_display}
+            <div class="sb-pro-badge">👑 Pro 🔥 {streak_count} ngày</div>            
         </div>
     </div>
     <div class="sb-divider"></div>
     """, unsafe_allow_html=True)
+    
+
 
     logger.debug(f"🖼️ sidebar_view: Đã render profile section — user={user_name}, streak={streak_count}, pro_badge=True.")
 

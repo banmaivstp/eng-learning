@@ -87,8 +87,8 @@ def inject_sidebar_css():
         /* Avatar với viền neon gradient xoay — giống mockup */
         .sb-avatar-ring {
             flex-shrink: 0;
-            width: 68px;
-            height: 68px;
+            width: 50px;
+            height: 50px;
             border-radius: 50%;
             background: linear-gradient(135deg, #00F2FE 0%, #4FACFE 40%, #a78bfa 100%);
             padding: 3px;
@@ -334,8 +334,8 @@ def inject_sidebar_css():
 
         /* --- AVATAR: lớn hơn (~80px) + glow neon xanh mạnh hơn theo mockup --- */
         .sb-avatar-ring {
-            width: 80px !important;
-            height: 80px !important;
+            width: 45px !important;
+            height: 45px !important;
             padding: 3px !important;
             box-shadow:
                 0 0 0 2px rgba(0, 242, 254, 0.25),
@@ -384,15 +384,6 @@ def inject_sidebar_css():
             border-radius: 16px !important;
             min-height: 54px !important;
             gap: 14px !important;
-        }
-
-        /* --- ACTIVE NAV: viền neon sáng hơn, rõ nét hơn như mockup --- */
-        .sb-nav-active {
-            background: rgba(0, 242, 254, 0.09) !important;
-            border: 1.5px solid rgba(0, 242, 254, 0.45) !important;
-            box-shadow:
-                inset 0 0 24px rgba(0, 242, 254, 0.04),
-                0 0 16px rgba(0, 242, 254, 0.10) !important;
         }
 
         /* --- ICON ACTIVE: neon sáng hơn --- */

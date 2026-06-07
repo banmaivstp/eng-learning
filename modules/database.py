@@ -189,7 +189,7 @@ def get_user_analytics(user_id: str) -> dict:
             supabase.table("learning_history")
             .select("score, duration_seconds, completed_at, episodes(title)")
             .eq("user_id", str(user_id))
-            .order("completed_at", ascending=False)
+            .order("completed_at", desc=True)
             .execute()
         )
 
