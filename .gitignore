@@ -5,11 +5,12 @@ views/.bk
 __pycache__/
 *.pyc
 *.log
- .00_resource/~$dbStructure.xlsx
- .00_resource/~$.SYSTEM DESIGN DOCUMENT.docx
- .00_resource/~$.SYSTEM DESIGN DOCUMENT ver 20260602.docx
- .00_resource/~WRL0003.tmp
- .00_resource/~$EduStayAI Roadmap.xlsx
+.00_resource/~$dbStructure.xlsx
+.00_resource/~$.SYSTEM DESIGN DOCUMENT.docx
+.00_resource/~$.SYSTEM DESIGN DOCUMENT ver 20260602.doc
+.00_resource/~$.SYSTEM DESIGN DOCUMENT ver 20260602.docx
+.00_resource/~WRL0003.tmp
+.00_resource/~$EduStayAI Roadmap.xlsx
 
 
 
