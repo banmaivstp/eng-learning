@@ -326,18 +326,14 @@ def _render_add_show_section(supabase_client):
 
 def _render_show_card_v4(show: dict, card_idx: int):
     """
-    Render show card v4 — Click trực tiếp vào card để navigate.
+    Render show card v4 — Dùng st.columns() chia hàng thành 2 cột:
+      - Cột trái (col_info): HTML card visual (thumbnail + title + episodes)
+      - Cột phải (col_btn):  st.button() thật, styled thành pill cyan
 
-    Kỹ thuật:
-    1. Bọc toàn bộ trong <div class="sl-v4-card-wrap"> qua st.markdown
-    2. Render card HTML (visual) — pointer-events: none (CSS)
-    3. Render st.button ngay sau — CSS absolute + opacity:0 phủ toàn card
-    4. User click vào bất kỳ vị trí nào trên card → button nhận click
-    5. st.rerun() + session_state update → chuyển trang
-
-    KHÔNG có nút "▶ Open" hiển thị.
-    KHÔNG dùng js/components bridge.
-    Chỉ dùng Streamlit thuần + CSS.
+    Giống pattern Recent Shows trong dashboard_view.py — không dùng
+    overlay button ẩn, không có CSS absolute/opacity hack.
+    CSS sl-v4- bên trong inject_show_list_card_button_css() được cập nhật
+    tương ứng để style col_btn thành pill giống .db-learn-btn-wrap.
 
     Log levels:
         DEBUG: render từng bước
@@ -365,45 +361,44 @@ def _render_show_card_v4(show: dict, card_idx: int):
     else:
         thumb_html = f'<div class="sl-show-thumb-placeholder">{icon}</div>'
 
-    # --- Mở wrapper div (relative container) ---
-    st.markdown('<div class="sl-v4-card-wrap">', unsafe_allow_html=True)
+    # ─────────────────────────────────────────────
+    # Layout: [info HTML  |  Open button]
+    # Tỉ lệ cột khớp chiều rộng nội dung — btn đủ
+    # chỗ cho chữ "▶ Open" mà không bị wrap.
+    # ─────────────────────────────────────────────
+    col_info, col_btn = st.columns([3.2, 1.0], gap="small")
 
-    # --- Card HTML (visual) ---
-    st.markdown(f"""
-    <div class="sl-show-card">
-        {thumb_html}
-        <div class="sl-show-info">
-            <div class="sl-show-title">{title}</div>
-            <div class="sl-show-episodes">{ep_label}</div>
+    with col_info:
+        st.markdown(f"""
+        <div class="sl-show-card">
+            {thumb_html}
+            <div class="sl-show-info">
+                <div class="sl-show-title">{title}</div>
+                <div class="sl-show-episodes">{ep_label}</div>
+            </div>
         </div>
-        <div class="sl-show-more-btn" title="More options">⋯</div>
-    </div>
-    """, unsafe_allow_html=True)
-    logger.debug(f"📄 show_list_view: Card[{card_idx}] HTML block rendered.")
+        """, unsafe_allow_html=True)
+        logger.debug(f"📄 show_list_view: Card[{card_idx}] HTML info rendered.")
 
-    # --- Button ẩn — đặt trong cùng wrapper → CSS absolute phủ card ---
-    btn_key = f"slv4_{show_id}_{card_idx}"
-    if st.button(
-        label=" ",           # label rỗng — sẽ bị opacity:0 ẩn hoàn toàn
-        key=btn_key,
-        use_container_width=True,
-        help=f"Mở: {title}"  # tooltip khi hover giúp UX rõ hơn
-    ):
-        logger.info(
-            f"🎯 show_list_view: User clicked card[{card_idx}] — "
-            f"'{title}' (id={show_id})"
-        )
-        st.session_state["selected_show"] = show
-        st.session_state["current_page"] = "Show Detail"
-        logger.debug(
-            f"📌 show_list_view: session_state → "
-            f"selected_show='{title}', current_page='Show Detail'"
-        )
-        st.rerun()
+    with col_btn:
+        # Bọc trong div để CSS pill được apply đúng
+        st.markdown('<div class="sl-open-btn-wrap">', unsafe_allow_html=True)
+        btn_key = f"slv4_{show_id}_{card_idx}"
+        if st.button("▶ Open", key=btn_key, use_container_width=False):
+            logger.info(
+                f"🎯 show_list_view: User clicked Open card[{card_idx}] — "
+                f"'{title}' (id={show_id})"
+            )
+            st.session_state["selected_show"] = show
+            st.session_state["current_page"] = "Show Detail"
+            logger.debug(
+                f"📌 show_list_view: session_state → "
+                f"selected_show='{title}', current_page='Show Detail'"
+            )
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- Đóng wrapper div ---
-    st.markdown('</div>', unsafe_allow_html=True)
-    logger.debug(f"✅ show_list_view: Card[{card_idx}] wrapper closed.")
+    logger.debug(f"✅ show_list_view: Card[{card_idx}] columns rendered.")
 
 
 def render_podcast_discover_page(supabase_client=None):

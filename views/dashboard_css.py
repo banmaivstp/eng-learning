@@ -260,6 +260,40 @@ def inject_dashboard_css():
             box-shadow: 0 0 10px rgba(0,242,254,0.35);
         }
 
+        /* =====================================================
+           LEARN BUTTON — Style đè st.button() thành pill cyan
+           giống mockup: nền #00F2FE, chữ đen, bo tròn pill.
+           Bọc bằng div.db-learn-btn-wrap trong dashboard_view.py
+        ===================================================== */
+        .db-learn-btn-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding-top: 10px;
+            padding-bottom: 4px;
+        }
+        .db-learn-btn-wrap button {
+            background: #00F2FE !important;
+            color: #020617 !important;
+            border: none !important;
+            border-radius: 20px !important;
+            font-size: 12px !important;
+            font-weight: 700 !important;
+            padding: 6px 12px !important;
+            box-shadow: 0 0 10px rgba(0,242,254,0.4) !important;
+            min-height: unset !important;
+            height: 32px !important;
+            line-height: 1 !important;
+            white-space: nowrap !important;
+            letter-spacing: 0.01em !important;
+            width: auto !important;
+        }
+        .db-learn-btn-wrap button:hover {
+            background: #67f7ff !important;
+            color: #020617 !important;
+            box-shadow: 0 0 18px rgba(0,242,254,0.65) !important;
+        }
+
     </style>
     """, unsafe_allow_html=True)
     logger.debug("✅ Dashboard CSS (db-) injected successfully.")

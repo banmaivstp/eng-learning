@@ -187,7 +187,7 @@ def get_user_analytics(user_id: str) -> dict:
 
         history_res = (
             supabase.table("learning_history")
-            .select("score, duration_seconds, completed_at, episodes(title)")
+            .select("score, duration_seconds, completed_at, episodes(title, show_id, shows(title, cover_image))")
             .eq("user_id", str(user_id))
             .order("completed_at", desc=True)
             .execute()
@@ -203,9 +203,21 @@ def get_user_analytics(user_id: str) -> dict:
         analytics["total_hours"] = round(total_seconds / 3600, 1)
         analytics["avg_score"] = round(df["score"].mean(), 1) if not df.empty else 0.0
 
+        # MỚI — dedup theo show_id, lấy tối đa 5 show duy nhất
+        seen_shows = set()
         recent_list = []
-        for _, row in df.head(5).iterrows():
-            ep_title = row.get("episodes", {}).get("title") if row.get("episodes") else "Bài học không tên"
+        for _, row in df.iterrows():
+            ep = row.get("episodes") or {}
+            show_id = ep.get("show_id")
+            show_info = ep.get("shows") or {}
+            show_title = show_info.get("title") or ep.get("title") or "Bài học không tên"
+            cover = show_info.get("cover_image") or ""
+            
+            key = show_id or show_title  # dedup key
+            if key in seen_shows:
+                continue
+            seen_shows.add(key)
+
             completed_dt = row.get("completed_at", "")
             try:
                 dt_obj = datetime.fromisoformat(completed_dt.replace("Z", "+00:00"))
@@ -214,10 +226,14 @@ def get_user_analytics(user_id: str) -> dict:
                 formatted_date = str(completed_dt)[:10]
 
             recent_list.append({
-                "title": ep_title,
+                "show_id":    show_id,      # FIX: cần để dashboard_view set selected_show["id"]
+                "show_title": show_title,
+                "cover_image": cover,
                 "score": int(row["score"]),
                 "date": formatted_date
             })
+            if len(recent_list) >= 5:
+                break
         analytics["recent_history"] = recent_list
 
         df["completed_at"] = pd.to_datetime(df["completed_at"])

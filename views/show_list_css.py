@@ -555,6 +555,68 @@ def inject_show_list_card_button_css():
             margin-top: 0 !important;
         }
 
+        /* =====================================================
+           CARD v4 — COLUMNS LAYOUT (giống dashboard Recent Shows)
+           sl-show-card bỏ pointer-events trick, chỉ còn visual.
+           Nút mở nằm trong col_btn riêng, không overlay.
+        ===================================================== */
+
+        /* Card visual — reset pointer-events về auto, bỏ hacks cũ */
+        .sl-show-card {
+            pointer-events: auto !important;
+            margin-bottom: 12px !important;
+            cursor: default !important;
+        }
+
+        /* Căn giữa dọc col_btn (cột chứa nút Open) với col_info bên trái.
+           Streamlit render st.columns thành stHorizontalBlock > stColumn.
+           Target stColumn cuối (col_btn) để flex-center theo trục dọc. */
+        [data-testid="stHorizontalBlock"]:has(.sl-open-btn-wrap)
+        > [data-testid="stColumn"]:last-child {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+
+        /* =====================================================
+           OPEN BUTTON — Pill cyan, giống db-learn-btn-wrap
+           Bọc bằng div.sl-open-btn-wrap trong _render_show_card_v4
+        ===================================================== */
+        .sl-open-btn-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding-bottom: 12px;   /* bù margin-bottom của sl-show-card */
+        }
+        .sl-open-btn-wrap button {
+            background: rgba(0, 242, 254, 0.10) !important;
+            color: #00F2FE !important;
+            border: 1px solid rgba(0, 242, 254, 0.30) !important;
+            border-radius: 20px !important;
+            font-size: 12px !important;
+            font-weight: 700 !important;
+            padding: 6px 12px !important;
+            box-shadow: 0 0 10px rgba(0, 242, 254, 0.15) !important;
+            min-height: unset !important;
+            height: 32px !important;
+            line-height: 1 !important;
+            white-space: nowrap !important;
+            letter-spacing: 0.01em !important;
+            width: auto !important;
+            transition: background 0.15s ease, border-color 0.15s ease,
+                        box-shadow 0.15s ease !important;
+        }
+        .sl-open-btn-wrap button:hover {
+            background: rgba(0, 242, 254, 0.20) !important;
+            border-color: rgba(0, 242, 254, 0.55) !important;
+            color: #ffffff !important;
+            box-shadow: 0 0 18px rgba(0, 242, 254, 0.35) !important;
+        }
+        .sl-open-btn-wrap button:active {
+            background: rgba(0, 242, 254, 0.28) !important;
+        }
+
     </style>
     """, unsafe_allow_html=True)
     logger.debug("✅ show_list_css: Card CSS v4 injected.")

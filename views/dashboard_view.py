@@ -4,30 +4,16 @@ import logging
 
 logger = logging.getLogger("views.dashboard_view")
 
-# =====================================================
-# DỮ LIỆU MẪU SHOWS — Fallback khi chưa có DB
-# Production: thay bằng query Supabase table "shows"
-# =====================================================
-SAMPLE_SHOWS = [
-    {"title": "English Listening Daily",  "episodes": 12, "icon": "🎙️"},
-    {"title": "Daily Conversations",      "episodes": 12, "icon": "🧠"},
-    {"title": "Business English Podcast", "episodes": 12, "icon": "☕"},
-    {"title": "Real Life English",        "episodes": 12, "icon": "🌆"},
-    {"title": "Speak Better Every Day",   "episodes": 12, "icon": "🎧"},
-    {"title": "Travel & Culture Stories", "episodes": 12, "icon": "🏔️"},
-]
-
 
 def render_dashboard_screen(user_analytics_data=None):
     """
     Render giao diện Dashboard theo chuẩn mockup Gen Z Dark UI.
-    Layout 2 cột: [Dashboard + Streak + Chart + Progress] | [Discover Shows]
-    Logic dữ liệu giữ nguyên hoàn toàn — chỉ thay đổi phần render UI.
+    Layout 2 cột: [Dashboard + Streak + Chart + Progress] | [Recent Shows]
     """
     logger.debug("📊 Rendering Dashboard screen — Gen Z UI v2.")
 
     # =====================================================
-    # 1. FALLBACK DATA — Tương thích cả key cũ lẫn mới
+    # 1. FALLBACK DATA
     # =====================================================
     if not user_analytics_data:
         logger.warning("⚠️ dashboard_view: Không có analytics data — dùng fallback.")
@@ -39,14 +25,16 @@ def render_dashboard_screen(user_analytics_data=None):
             "avg_score":      0.0,
             "average_score":  0.0,
             "weekly_data":    [0.0] * 7,
+            "recent_history": [],
         }
 
     # Lấy giá trị — tương thích cả key cũ lẫn mới từ database.py
-    streak      = user_analytics_data.get("current_streak") or user_analytics_data.get("streak_count", 0)
-    total_eps   = user_analytics_data.get("total_episodes", 0)
-    total_hours = user_analytics_data.get("total_hours", 0.0)
-    avg_score   = user_analytics_data.get("avg_score") or user_analytics_data.get("average_score", 0.0)
-    weekly_raw  = user_analytics_data.get("weekly_data", [0.0] * 7)
+    streak         = user_analytics_data.get("current_streak") or user_analytics_data.get("streak_count", 0)
+    total_eps      = user_analytics_data.get("total_episodes", 0)
+    total_hours    = user_analytics_data.get("total_hours", 0.0)
+    avg_score      = user_analytics_data.get("avg_score") or user_analytics_data.get("average_score", 0.0)
+    weekly_raw     = user_analytics_data.get("weekly_data", [0.0] * 7)
+    recent_history = user_analytics_data.get("recent_history", [])
 
     # Đảm bảo weekly_data luôn đủ 7 phần tử
     if len(weekly_raw) < 7:
@@ -56,7 +44,7 @@ def render_dashboard_screen(user_analytics_data=None):
     logger.debug(
         f"📊 dashboard_view: streak={streak}, eps={total_eps}, "
         f"hours={total_hours}, avg_score={avg_score}, "
-        f"weekly_total={total_minutes:.1f}min"
+        f"weekly_total={total_minutes:.1f}min, recent_shows={len(recent_history)}"
     )
 
     # =====================================================
@@ -70,10 +58,7 @@ def render_dashboard_screen(user_analytics_data=None):
     with col_left:
 
         # --- HEADER TITLE ---
-        st.markdown(
-            '<div class="db-title">Dashboard</div>',
-            unsafe_allow_html=True
-        )
+        st.markdown('<div class="db-title">Dashboard</div>', unsafe_allow_html=True)
         logger.debug("📊 dashboard_view: Rendered header.")
 
         # --- STREAK CARD ---
@@ -103,7 +88,7 @@ def render_dashboard_screen(user_analytics_data=None):
         </div>
         """, unsafe_allow_html=True)
 
-        # --- BIỂU ĐỒ — Dùng Altair để kiểm soát màu cyan neon theo mockup ---
+        # --- BIỂU ĐỒ ---
         days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         chart_df = pd.DataFrame({
             "Day":     days,
@@ -156,10 +141,7 @@ def render_dashboard_screen(user_analytics_data=None):
             st.bar_chart(chart_fallback, height=190, use_container_width=True)
 
         # --- PROGRESS OVERVIEW TITLE ---
-        st.markdown(
-            '<div class="db-progress-title">Progress Overview</div>',
-            unsafe_allow_html=True
-        )
+        st.markdown('<div class="db-progress-title">Progress Overview</div>', unsafe_allow_html=True)
 
         # --- 3 METRIC CARDS ---
         # avg_score từ database.py: thang 0–10 → convert sang %
@@ -204,43 +186,68 @@ def render_dashboard_screen(user_analytics_data=None):
         )
 
     # ─────────────────────────────────────────────────
-    #  CỘT PHẢI: Discover Shows
-    #  BUG FIX: Render từng item riêng biệt bằng st.markdown
-    #  KHÔNG join chuỗi HTML trong vòng lặp vì Streamlit
-    #  sẽ escape/không render đúng khi HTML quá phức tạp
+    #  CỘT PHẢI: Recent Shows
+    #  FIX 1: Toàn bộ render list NẰM TRONG with col_right (indent đúng)
+    #  FIX 2: Dùng st.button() thật thay HTML button để navigate được
     # ─────────────────────────────────────────────────
     with col_right:
 
-        # --- DISCOVER HEADER ---
-        st.markdown(
-            '<div class="db-discover-title">Discover Shows</div>',
-            unsafe_allow_html=True
-        )
+        # --- HEADER ---
+        st.markdown('<div class="db-discover-title">Recent Shows</div>', unsafe_allow_html=True)
 
-        # --- PASTE URL ROW (UI placeholder) ---
-        st.markdown("""
-        <div class="db-url-row">
-            <span class="db-url-icon">🔗</span>
-            <span class="db-url-placeholder">Paste podcast URL here...</span>
-        </div>
-        """, unsafe_allow_html=True)
+        # --- DANH SÁCH SHOWS — render từng item riêng biệt ---
+        if not recent_history:
+            st.markdown(
+                '<div style="color:#475569; font-size:13px; padding:12px 4px;">'
+                '📭 Bạn chưa học bài nào. Hãy bắt đầu ngay!</div>',
+                unsafe_allow_html=True
+            )
+        else:
+            for i, show in enumerate(recent_history):
+                border_style = (
+                    "border-bottom: 1px solid rgba(255,255,255,0.05);"
+                    if i < len(recent_history) - 1 else ""
+                )
+                cover = show.get("cover_image", "")
+                thumb_html = (
+                    f'<img src="{cover}" style="width:52px;height:52px;border-radius:10px;object-fit:cover;flex-shrink:0;">'
+                    if cover else
+                    '<div class="db-show-thumb-placeholder">🎧</div>'
+                )
 
-        # --- DANH SÁCH SHOWS ---
-        # BUG FIX: render TỪNG item bằng st.markdown() riêng biệt
-        # Tránh join HTML phức tạp trong vòng lặp gây Streamlit escape
-        logger.debug(f"📊 dashboard_view: Rendering {len(SAMPLE_SHOWS)} show items individually.")
-        for i, show in enumerate(SAMPLE_SHOWS):
-            border_style = "border-bottom: 1px solid rgba(255,255,255,0.05);" if i < len(SAMPLE_SHOWS) - 1 else ""
-            st.markdown(f"""
-            <div class="db-show-item" style="{border_style}">
-                <div class="db-show-thumb-placeholder">{show['icon']}</div>
-                <div class="db-show-info">
-                    <div class="db-show-title">{show['title']}</div>
-                    <div class="db-show-episodes">{show['episodes']} Episodes</div>
-                </div>
-                <div class="db-learn-btn">⚡ Learn</div>
-            </div>
-            """, unsafe_allow_html=True)
-            logger.debug(f"📊 dashboard_view: Rendered show[{i}] = {show['title']}")
+                # Dùng st.columns để đặt HTML info (cột trái) và st.button (cột phải) ngang hàng.
+                # CSS db-show-row-wrap xóa gap mặc định giữa 2 cột để trông liền mạch.
+                col_info, col_btn = st.columns([2.8, 1.2], gap="small")
+
+                with col_info:
+                    st.markdown(f"""
+                    <div class="db-show-item" style="{border_style}">
+                        {thumb_html}
+                        <div class="db-show-info">
+                            <div class="db-show-title">{show['show_title']}</div>
+                            <div class="db-show-episodes">Last: {show['date']} · Score: {show['score']}</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                with col_btn:
+                    st.markdown('<div class="db-learn-btn-wrap">', unsafe_allow_html=True)
+                    btn_key = f"db_continue_show_{i}_{show.get('show_id', show['show_title'])}"
+                    if st.button("⚡Learn", key=btn_key, use_container_width=False):
+                        logger.info(
+                            f"🖱️ dashboard_view: User clicked Learn → show='{show['show_title']}' "
+                            f"show_id='{show.get('show_id')}'"
+                        )
+                        st.session_state["selected_show"] = {
+                            "id":            show.get("show_id", ""),
+                            "title":         show.get("show_title", ""),
+                            "cover_image":   show.get("cover_image", None),
+                            "episode_count": 0,
+                        }
+                        st.session_state["current_page"] = "Show Detail"
+                        st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+                logger.debug(f"📊 dashboard_view: Rendered recent show[{i}] = {show['show_title']}")
 
     logger.info("✅ dashboard_view: Dashboard screen rendered successfully.")

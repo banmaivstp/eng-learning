@@ -85,8 +85,11 @@ def _fetch_episodes_from_db(supabase_client, show_id: str) -> list:
 
 def _render_episode_row(ep: dict, ep_idx: int, show_cover: str | None):
     """
-    Render một hàng episode theo mockup:
-    [thumbnail] | [số thứ tự + tiêu đề + duration] | [nút play]
+    Render một hàng episode theo pattern st.columns() — giống dashboard Recent Shows.
+    - Cột trái (col_info): HTML visual [thumbnail + badge + title + duration]
+    - Cột phải (col_btn):  st.button() thật, styled thành pill cyan qua CSS .pcl-start-btn-wrap
+
+    Không dùng overlay button ẩn hay CSS absolute/opacity hack.
 
     Args:
         ep: dict episode từ DB hoặc sample
@@ -95,50 +98,48 @@ def _render_episode_row(ep: dict, ep_idx: int, show_cover: str | None):
     """
     import html as _html
 
-    ep_id    = ep.get("id", f"ep-{ep_idx}")
-    ep_title = _html.escape(ep.get("title", f"Episode {ep_idx + 1}"))   # escape quotes/angle-brackets
+    ep_id       = ep.get("id", f"ep-{ep_idx}")
+    ep_title    = _html.escape(ep.get("title", f"Episode {ep_idx + 1}"))
     ep_duration = ep.get("duration", "")
-    ep_audio_url = ep.get("audio_url", None)  # noqa: F841
+    badge_num   = ep_idx + 1
 
-    # Thumbnail — escape URL để tránh nháy kép phá attribute
+    # Thumbnail
     if show_cover:
         safe_cover = _html.escape(show_cover, quote=True)
         thumb_html = f'<img src="{safe_cover}" class="pcl-ep-thumb" alt="ep"/>'
     else:
         thumb_html = '<div class="pcl-ep-thumb-placeholder">&#127911;</div>'
 
-    badge_num = ep_idx + 1
-
     safe_dur = _html.escape(str(ep_duration)) if ep_duration else ""
     duration_html = (
-        f'<div class="pcl-ep-duration"><span class="pcl-ep-duration-icon">&#127911;</span> {safe_dur}</div>'
+        f'<div class="pcl-ep-duration">'
+        f'<span class="pcl-ep-duration-icon">&#127911;</span> {safe_dur}</div>'
         if safe_dur else ""
     )
 
-    # Xây HTML thành 1 dòng để tránh Streamlit hiểu là Markdown code-block
-    ep_html = (
-        f'<div class="pcl-episode-row" id="pcl-ep-{ep_idx}">'
-        + thumb_html
-        + '<div class="pcl-ep-info">'
-        + f'<div class="pcl-ep-badge">B&#224;i {badge_num}</div>'
-        + f'<div class="pcl-ep-title">{ep_title}</div>'
-        + duration_html
-        + '</div>'
-        + '<div class="pcl-ep-play-btn">'
-        + '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">'
-        + '<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/>'
-        + '<path d="M10 8.5L15 12L10 15.5V8.5Z" fill="currentColor"/>'
-        + '</svg></div></div>'
-    )
-    st.markdown(ep_html, unsafe_allow_html=True)
+    col_info, col_btn = st.columns([3.6, 1.0], gap="small")
 
-    # Streamlit button ẩn (kỹ thuật overlay) để nhận click
-    btn_key = f"pcl_ep_{ep_id}_{ep_idx}"
-    if st.button("▶", key=btn_key, use_container_width=True):
-        logger.info(f"🎯 podcast_list_view: Chọn episode '{ep_title}' (id={ep_id})")
-        st.session_state["selected_episode"] = ep
-        st.session_state["current_page"] = "Episode Detail"
-        st.rerun()
+    with col_info:
+        ep_html = (
+            f'<div class="pcl-episode-row">'
+            + thumb_html
+            + '<div class="pcl-ep-info">'
+            + f'<div class="pcl-ep-badge">B&#224;i {badge_num}</div>'
+            + f'<div class="pcl-ep-title">{ep_title}</div>'
+            + duration_html
+            + '</div></div>'
+        )
+        st.markdown(ep_html, unsafe_allow_html=True)
+
+    with col_btn:
+        st.markdown('<div class="pcl-start-btn-wrap">', unsafe_allow_html=True)
+        btn_key = f"pcl_ep_{ep_id}_{ep_idx}"
+        if st.button("▶ Start", key=btn_key, use_container_width=False):
+            logger.info(f"🎯 podcast_list_view: Chọn episode '{ep_title}' (id={ep_id})")
+            st.session_state["selected_episode"] = ep
+            st.session_state["current_page"] = "Episode Detail"
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
 def render_podcast_list_page(supabase_client=None):
