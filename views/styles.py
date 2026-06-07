@@ -3,6 +3,16 @@ import logging
 
 logger = logging.getLogger("views.styles")
 
+# =====================================================
+# RE-EXPORT — Tương thích ngược với app.py
+# CSS đã được tách ra file riêng biệt theo kiến trúc MVC:
+#   views/dashboard_css.py  → inject_dashboard_css()
+#   views/show_list_css.py  → inject_show_list_css()
+# Import lại tại đây để app.py không cần đổi import.
+# =====================================================
+from views.dashboard_css import inject_dashboard_css  # noqa: F401  (re-export)
+from views.show_list_css import inject_show_list_css   # noqa: F401  (re-export)
+
 def inject_global_css():
     logger.debug("🎨 Injecting CSS system.")
     st.markdown("""
@@ -657,16 +667,15 @@ def inject_sidebar_css():
     """, unsafe_allow_html=True)
 
 # =====================================================
-# DASHBOARD CSS — THÊM MỚI (KHÔNG THAY ĐỔI CSS CŨ)
-# Quy tắc: CHỈ THÊM MỚI, KHÔNG SỬA inject_global_css()
-#          và KHÔNG SỬA inject_sidebar_css()
+# DASHBOARD CSS — ĐÃ TÁCH RA views/dashboard_css.py
+# Hàm inject_dashboard_css() được re-export ở đầu file.
+# Body giữ lại dưới đây để tham khảo lịch sử — KHÔNG thực thi.
 # =====================================================
-def inject_dashboard_css():
+def _inject_dashboard_css_legacy():
     """
-    Inject CSS riêng biệt cho màn hình Dashboard — Gen Z Dark UI.
-    CHỈ THÊM MỚI — không đụng inject_global_css() / inject_sidebar_css().
-    Đồng thời fix Bug: sb-bottom-section position:sticky thay fixed
-    để không chặn sidebar toggle button của Streamlit.
+    [LEGACY — ĐÃ TÁCH] CSS Dashboard nay nằm tại views/dashboard_css.py.
+    Hàm inject_dashboard_css() được import và re-export ở đầu styles.py.
+    Hàm này KHÔNG được gọi — giữ lại chỉ để tra cứu.
     """
     logger.debug("🎨 Injecting Dashboard CSS + Sidebar Bug Fix.")
     st.markdown("""
@@ -1349,17 +1358,15 @@ def inject_podcast_list_css():
     logger.debug("✅ Podcast List CSS injected successfully.")
 
 # =====================================================
-# SHOW LIST VIEW CSS — THÊM MỚI (Milestone 2 - Show Library)
-# Quy tắc: CHỈ THÊM MỚI vào file — KHÔNG thay đổi code cũ
-# Tên CSS classes dùng tiền tố "sl-" để tránh xung đột
+# SHOW LIST VIEW CSS — ĐÃ TÁCH RA views/show_list_css.py
+# Hàm inject_show_list_css() được re-export ở đầu file.
+# Body giữ lại dưới đây để tham khảo lịch sử — KHÔNG thực thi.
 # =====================================================
-def inject_show_list_css():
+def _inject_show_list_css_legacy():
     """
-    Inject CSS riêng cho màn hình Your Podcast Library (show_list_view).
-    Sử dụng prefix 'sl-' cho tất cả class names để tránh conflict với
-    các CSS đã có (.pl-, .db-, .sb-, v.v.).
-    CHỈ THÊM MỚI — không sửa inject_global_css(), inject_sidebar_css(),
-    inject_dashboard_css(), inject_podcast_list_css().
+    [LEGACY — ĐÃ TÁCH] CSS Show List nay nằm tại views/show_list_css.py.
+    Hàm inject_show_list_css() được import và re-export ở đầu styles.py.
+    Hàm này KHÔNG được gọi — giữ lại chỉ để tra cứu.
     """
     logger.debug("🎨 Injecting Show List CSS (sl- prefix) — Milestone 2.")
     st.markdown("""

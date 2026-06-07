@@ -1,7 +1,8 @@
 """
 views/quiz_detail_view.py
 ===========================
-Màn hình phòng học chi tiết: Audio Player + Transcript Highlight + Quiz Tapping.
+TẦNG GIAO DIỆN (VIEW) — Màn hình phòng học chi tiết.
+Audio Player + Transcript Highlight + Quiz Tapping.
 
 Luồng điều hướng:
     podcast_list_view → (click episode) → quiz_detail_view → (nộp bài) → save_learning_history
@@ -17,7 +18,7 @@ Logic Cache:
 
 Quy tắc code:
     - KHÔNG thay đổi logic DB/AI/scraper — chỉ thay đổi UI
-    - CSS được inject qua styles.py (inject_quiz_detail_css) — KHÔNG thêm CSS inline lớn
+    - CSS được inject qua views/quiz_detail_css.py (inject_quiz_detail_css) — KHÔNG thêm CSS inline lớn
     - Log đầy đủ theo level: DEBUG, INFO, WARNING, ERROR
 """
 
@@ -26,6 +27,9 @@ import logging
 import json
 import time
 from datetime import datetime
+
+# TẦNG STYLE: Import CSS độc lập của màn hình này
+from views.quiz_detail_css import inject_quiz_detail_css
 
 logger = logging.getLogger("views.quiz_detail_view")
 
@@ -437,7 +441,7 @@ def _render_transcript_section(sentences: list):
     if "qd_active_sentence" not in st.session_state:
         st.session_state["qd_active_sentence"] = 0
     if "qd_show_transcript" not in st.session_state:
-        st.session_state["qd_show_transcript"] = True
+        st.session_state["qd_show_transcript"] = False
 
     active_idx = st.session_state["qd_active_sentence"]
 
@@ -508,8 +512,6 @@ def _render_quiz_section(quiz_data: list, episode_id: str, user_id: str, audio_s
 
     submitted = st.session_state["qd_submitted"]
 
-
-
     if submitted:
         _render_quiz_results(quiz_data, supabase_client, episode_id, user_id)
         return
@@ -525,7 +527,7 @@ def _render_quiz_section(quiz_data: list, episode_id: str, user_id: str, audio_s
     q_num = q.get("question_number", current_q_idx + 1)
     q_text = q.get("question", "")
     options = q.get("options", {})
-    
+
     st.markdown(
         '<div class="qd-section-header" style="margin-top: 10px; margin-bottom: 8px;">'
         '<span class="qd-section-icon">❓</span>'
@@ -538,7 +540,6 @@ def _render_quiz_section(quiz_data: list, episode_id: str, user_id: str, audio_s
     # Progress bar câu hỏi gọn gàng
     st.markdown(
         f'<div class="qd-quiz-progress">'
-        
         f'<div class="qd-quiz-progress-bar"><div class="qd-quiz-progress-fill" style="width:{int(((current_q_idx)/total_q)*100)}%"></div></div>'
         f'</div>',
         unsafe_allow_html=True
@@ -550,14 +551,14 @@ def _render_quiz_section(quiz_data: list, episode_id: str, user_id: str, audio_s
 
     # Toàn bộ khối đáp án nằm trong container định danh để dễ can thiệp CSS
     st.markdown('<div class="qd-quiz-options-container">', unsafe_allow_html=True)
-    
+
     for opt_key in ["A", "B", "C", "D"]:
         opt_text = options.get(opt_key, "")
         if not opt_text:
             continue
 
         is_selected = (current_answer == opt_key)
-        
+
         # Text sạch không chứa icon radio dư thừa
         btn_label = f"{opt_key}: {opt_text}"
         btn_type = "primary" if is_selected else "secondary"
@@ -569,7 +570,7 @@ def _render_quiz_section(quiz_data: list, episode_id: str, user_id: str, audio_s
             else:
                 st.session_state["qd_current_question"] = total_q
             st.rerun()
-            
+
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="qd-quiz-nav">', unsafe_allow_html=True)
@@ -620,7 +621,7 @@ def _render_submit_button(quiz_data, episode_id, user_id, audio_start_time, supa
             score_10 = round((correct / max(len(quiz_data), 1)) * 10, 1)
             score_100 = round((correct / max(len(quiz_data), 1)) * 100)
             duration_seconds = int(time.time() - st.session_state.get("qd_quiz_start_time", time.time()))
-            
+
             st.session_state["qd_score"] = score_10
             st.session_state["qd_correct"] = correct
             st.session_state["qd_submitted"] = True
@@ -707,6 +708,9 @@ def render_quiz_detail_page(supabase_client=None, user_id: str = None):
     Màn hình chính Quiz Detail: Audio Player + Transcript + Quiz.
     """
     logger.info("🎬 quiz_detail_view: render_quiz_detail_page() — START.")
+
+    # Inject CSS tầng Style độc lập của màn hình này
+    inject_quiz_detail_css()
 
     selected_episode = st.session_state.get("selected_episode", {})
     selected_show = st.session_state.get("selected_show", {})

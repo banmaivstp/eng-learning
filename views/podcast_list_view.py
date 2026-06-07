@@ -1,20 +1,24 @@
 """
 views/podcast_list_view.py
 ===========================
-Màn hình "Danh sách bài học" — hiển thị tất cả episodes của một show đã chọn.
+TẦNG GIAO DIỆN (VIEW) — Màn hình "Danh sách bài học".
+Hiển thị tất cả episodes của một show đã chọn.
 
 Luồng điều hướng:
     show_list_view → (click show card) → podcast_list_view → (click episode) → quiz_detail_view
 
 Quy tắc code:
     - KHÔNG thay đổi logic DB/scraper — chỉ thay đổi UI
-    - CSS được inject qua styles.py (inject_podcast_list_css) — KHÔNG thêm CSS inline lớn
+    - CSS được inject qua views/podcast_list_css.py (inject_podcast_list_view_css) — KHÔNG thêm CSS inline lớn
     - Log đầy đủ theo level: DEBUG, INFO, WARNING, ERROR
     - Không cuộn trang quá nhiều — tối ưu "vùng đất vàng"
 """
 
 import streamlit as st
 import logging
+
+# TẦNG STYLE: Import CSS độc lập của màn hình này
+from views.podcast_list_css import inject_podcast_list_view_css
 
 logger = logging.getLogger("views.podcast_list_view")
 
@@ -155,6 +159,9 @@ def render_podcast_list_page(supabase_client=None):
         [ERROR]  Khi lỗi Supabase
     """
     logger.info("📋 podcast_list_view: render_podcast_list_page() — START.")
+
+    # Inject CSS tầng Style độc lập của màn hình này
+    inject_podcast_list_view_css()
 
     # ─────────────────────────────────────────────
     # 0. LẤY THÔNG TIN SHOW ĐÃ CHỌN TỪ SESSION

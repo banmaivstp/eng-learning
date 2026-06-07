@@ -1,6 +1,12 @@
 import streamlit as st
 import logging
 
+# =====================================================
+# TẦNG STYLE: Import CSS từ file riêng biệt
+# show_list_css.py chứa toàn bộ CSS của màn này
+# =====================================================
+from views.show_list_css import inject_show_list_card_button_css
+
 logger = logging.getLogger("views.show_list_view")
 
 # =====================================================
@@ -186,11 +192,6 @@ def _build_card_html(show: dict) -> str:
     Giải pháp đúng: Dùng st.markdown cho visual card + st.button ẩn overlay.
     Nhưng yêu cầu là KHÔNG dùng overlay. Vậy dùng streamlit-javascript hoặc
     components.v1.html để bridge JS click → session_state.
-
-    Kỹ thuật cuối cùng (reliable nhất trong Streamlit thuần):
-    - Render card HTML bằng st.markdown
-    - Thêm JS onclick vào card div → gọi window.parent.postMessage
-    - Dùng st.components.v1.html để nhận message và cập nhật session_state
     KHÔNG khả thi trong 1 render cycle.
 
     => Giải pháp THỰC DỤNG nhất: st.button với label có icon + title text
@@ -323,223 +324,6 @@ def _render_add_show_section(supabase_client):
                         st.error(f"Lỗi khi quét: {scrape_err}")
 
 
-def render_podcast_discover_page(supabase_client=None):
-    """
-    Màn hình 'Your Podcast Library' — render khi sidebar Discover được click.
-    - Layout: page header + search bar + add-show expander + grid 2 cột.
-    - Logic DB, scraper, điều hướng KHÔNG thay đổi so với bản gốc.
-    - Tham số supabase_client khớp với cách gọi từ app.py:
-        render_podcast_discover_page(supabase_client=supabase)
-
-    Fix v4 — Card Click Navigation:
-    - Bỏ nút "▶ Open {title}" hiển thị dưới card
-    - Dùng st.button ẩn (opacity:0) đè lên card HTML bằng CSS negative margin-top
-    - CSS .sl-show-card-btn target đúng chiều cao card (90px) → click chính xác
-    - overflow:hidden trên .stButton chặn vùng click tràn lên/xuống
-
-    Logs:
-        [INFO]  Khi function được gọi và hoàn thành
-        [DEBUG] Từng bước render: header, fetch, grid, từng card
-        [WARNING] Khi dùng sample data hoặc URL rỗng
-        [ERROR]  Khi lỗi Supabase / Scraper
-    """
-    logger.info("📻 show_list_view: render_podcast_discover_page() — START.")
-
-    # ─────────────────────────────────────────────
-    # 0. INJECT CSS CHO CARD BUTTON (gọi một lần đầu)
-    # ─────────────────────────────────────────────
-    _inject_card_css_v4()
-
-    # ─────────────────────────────────────────────
-    # 1. PAGE HEADER
-    # ─────────────────────────────────────────────
-    st.markdown("""
-    <div class="sl-page-header">
-        <div class="sl-page-title">Your Podcast Library</div>
-        <div class="sl-page-sub">All the shows you've saved in one place.</div>
-    </div>
-    """, unsafe_allow_html=True)
-    logger.debug("📝 show_list_view: Rendered page header.")
-
-    # ─────────────────────────────────────────────
-    # 2. SEARCH BAR
-    # ─────────────────────────────────────────────
-    search_query = st.text_input(
-        label="Search shows",
-        placeholder="🔍  Search shows...",
-        label_visibility="collapsed",
-        key="sl_search_input"
-    )
-    logger.debug(f"🔍 show_list_view: search_query='{search_query}'")
-
-    # ─────────────────────────────────────────────
-    # 3. ADD SHOW SECTION
-    # ─────────────────────────────────────────────
-    _render_add_show_section(supabase_client)
-
-    # ─────────────────────────────────────────────
-    # 4. FETCH DATA
-    # ─────────────────────────────────────────────
-    shows = _fetch_shows_from_db(supabase_client)
-    logger.debug(f"📦 show_list_view: Total shows loaded: {len(shows)}")
-
-    # Filter theo search
-    if search_query and search_query.strip():
-        q = search_query.strip().lower()
-        shows = [s for s in shows if q in s.get("title", "").lower()]
-        logger.debug(f"🔍 show_list_view: After filter '{q}': {len(shows)} shows remain.")
-
-    # ─────────────────────────────────────────────
-    # 5. RENDER GRID 2 CỘT
-    # ─────────────────────────────────────────────
-    if not shows:
-        logger.info("ℹ️ show_list_view: Empty state — không có show để hiển thị.")
-        st.markdown("""
-        <div class="sl-empty-state">
-            <div class="sl-empty-icon">🎧</div>
-            <div class="sl-empty-title">No shows yet</div>
-            <div class="sl-empty-sub">Paste an Apple Podcast URL above<br/>to add your first show.</div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        logger.debug(f"🗂️ show_list_view: Rendering {len(shows)} shows in 2-col grid.")
-        # Render từng hàng: 2 card/hàng
-        for row_idx in range(0, len(shows), 2):
-            col_left, col_right = st.columns(2, gap="medium")
-
-            with col_left:
-                _render_show_card_v4(shows[row_idx], row_idx)
-                logger.debug(f"✅ show_list_view: Card [{row_idx}] rendered — '{shows[row_idx]['title']}'")
-
-            if row_idx + 1 < len(shows):
-                with col_right:
-                    _render_show_card_v4(shows[row_idx + 1], row_idx + 1)
-                    logger.debug(f"✅ show_list_view: Card [{row_idx+1}] rendered — '{shows[row_idx+1]['title']}'")
-
-    logger.info("✅ show_list_view: render_podcast_discover_page() — DONE.")
-
-
-def _inject_card_css_v4():
-    """
-    CSS v4 — Show card click fix.
-
-    Chiến lược:
-    - Mỗi card = 1 div HTML (visual) + 1 st.button ngay bên dưới
-    - st.button bị kéo lên đè lên card bằng margin-top âm
-    - Button opacity:0 → không nhìn thấy, nhưng vẫn nhận click
-    - overflow:hidden trên wrapper ngăn vùng click tràn ra ngoài
-    - Chiều cao card thực = padding 16px*2 + content ~58px ≈ 90px
-      → margin-top: -90px, height: 90px
-
-    QUY TẮC: CHỈ THÊM MỚI — không sửa CSS cũ trong styles.py
-    Prefix class: sl-v4- để không conflict với sl- cũ
-    """
-    logger.debug("🎨 show_list_view: Injecting Card CSS v4.")
-    st.markdown("""
-    <style>
-        /* =====================================================
-           SHOW CARD v4 — Invisible overlay button
-           Kỹ thuật: HTML card (visual) + button ẩn đè lên trên
-
-           CRITICAL: Chỉ target button bên trong .sl-v4-card-wrap
-           KHÔNG target sidebar buttons (đã bảo vệ bằng :not selector)
-        ===================================================== */
-
-        /* Wrapper bao ngoài: relative để button con dùng absolute */
-        .sl-v4-card-wrap {
-            position: relative !important;
-            display: block !important;
-            width: 100% !important;
-            margin-bottom: 14px !important;
-        }
-
-        /* Card HTML: pointer-events none → click xuyên qua xuống button */
-        .sl-v4-card-wrap .sl-show-card {
-            pointer-events: none !important;
-            margin-bottom: 0 !important;
-            position: relative !important;
-            z-index: 1 !important;
-        }
-
-        /* Hover effect qua parent selector */
-        .sl-v4-card-wrap:hover .sl-show-card {
-            background: rgba(0, 242, 254, 0.05) !important;
-            border-color: rgba(0, 242, 254, 0.22) !important;
-            box-shadow: 0 0 22px rgba(0, 242, 254, 0.07) !important;
-        }
-        .sl-v4-card-wrap:active .sl-show-card {
-            background: rgba(0, 242, 254, 0.09) !important;
-            border-color: rgba(0, 242, 254, 0.35) !important;
-        }
-
-        /* stButton wrapper bên trong sl-v4-card-wrap:
-           absolute, phủ toàn bộ vùng card, z-index cao hơn card HTML */
-        .sl-v4-card-wrap > div[data-testid="stButton"],
-        .sl-v4-card-wrap .stButton {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
-            bottom: 0 !important;
-            width: 100% !important;
-            height: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            z-index: 10 !important;
-            pointer-events: auto !important;
-        }
-
-        /* Button element: trong suốt, phủ toàn bộ wrapper */
-        .sl-v4-card-wrap > div[data-testid="stButton"] > button,
-        .sl-v4-card-wrap .stButton > button {
-            opacity: 0 !important;
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
-            bottom: 0 !important;
-            width: 100% !important;
-            height: 100% !important;
-            min-height: 0 !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            border: none !important;
-            border-radius: 16px !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            cursor: pointer !important;
-            z-index: 10 !important;
-            font-size: 0 !important;
-            color: transparent !important;
-            pointer-events: auto !important;
-        }
-
-        /* =====================================================
-           BẢOV VỆ SIDEBAR BUTTONS — không bị ảnh hưởng
-           sidebar buttons đã được inject_sidebar_css() style sẵn
-        ===================================================== */
-        [data-testid="stSidebar"] .sl-v4-card-wrap {
-            display: none !important; /* sidebar không có card-wrap */
-        }
-
-        /* =====================================================
-           FIX: Đảm bảo các stButton KHÁC (scan, settings, logout)
-           trong main content không bị style như card button
-           → chỉ button bên trong .sl-v4-card-wrap bị ảnh hưởng
-        ===================================================== */
-
-        /* =====================================================
-           STREAMLIT COLUMN GAP — đảm bảo 2 cột card đều nhau
-        ===================================================== */
-        .sl-v4-card-wrap + .sl-v4-card-wrap {
-            margin-top: 0 !important;
-        }
-
-    </style>
-    """, unsafe_allow_html=True)
-    logger.debug("✅ show_list_view: Card CSS v4 injected.")
-
-
 def _render_show_card_v4(show: dict, card_idx: int):
     """
     Render show card v4 — Click trực tiếp vào card để navigate.
@@ -620,3 +404,100 @@ def _render_show_card_v4(show: dict, card_idx: int):
     # --- Đóng wrapper div ---
     st.markdown('</div>', unsafe_allow_html=True)
     logger.debug(f"✅ show_list_view: Card[{card_idx}] wrapper closed.")
+
+
+def render_podcast_discover_page(supabase_client=None):
+    """
+    Màn hình 'Your Podcast Library' — render khi sidebar Discover được click.
+    - Layout: page header + search bar + add-show expander + grid 2 cột.
+    - Logic DB, scraper, điều hướng KHÔNG thay đổi so với bản gốc.
+    - Tham số supabase_client khớp với cách gọi từ app.py:
+        render_podcast_discover_page(supabase_client=supabase)
+
+    Fix v4 — Card Click Navigation:
+    - Bỏ nút "▶ Open {title}" hiển thị dưới card
+    - Dùng st.button ẩn (opacity:0) đè lên card HTML bằng CSS negative margin-top
+    - CSS .sl-show-card-btn target đúng chiều cao card (90px) → click chính xác
+    - overflow:hidden trên .stButton chặn vùng click tràn lên/xuống
+
+    Logs:
+        [INFO]  Khi function được gọi và hoàn thành
+        [DEBUG] Từng bước render: header, fetch, grid, từng card
+        [WARNING] Khi dùng sample data hoặc URL rỗng
+        [ERROR]  Khi lỗi Supabase / Scraper
+    """
+    logger.info("📻 show_list_view: render_podcast_discover_page() — START.")
+
+    # ─────────────────────────────────────────────
+    # 0. INJECT CSS CHO CARD BUTTON (gọi một lần đầu)
+    #    Delegate sang show_list_css.py — tách biệt hoàn toàn
+    # ─────────────────────────────────────────────
+    inject_show_list_card_button_css()
+
+    # ─────────────────────────────────────────────
+    # 1. PAGE HEADER
+    # ─────────────────────────────────────────────
+    st.markdown("""
+    <div class="sl-page-header">
+        <div class="sl-page-title">Your Podcast Library</div>
+        <div class="sl-page-sub">All the shows you've saved in one place.</div>
+    </div>
+    """, unsafe_allow_html=True)
+    logger.debug("📝 show_list_view: Rendered page header.")
+
+    # ─────────────────────────────────────────────
+    # 2. SEARCH BAR
+    # ─────────────────────────────────────────────
+    search_query = st.text_input(
+        label="Search shows",
+        placeholder="🔍  Search shows...",
+        label_visibility="collapsed",
+        key="sl_search_input"
+    )
+    logger.debug(f"🔍 show_list_view: search_query='{search_query}'")
+
+    # ─────────────────────────────────────────────
+    # 3. ADD SHOW SECTION
+    # ─────────────────────────────────────────────
+    _render_add_show_section(supabase_client)
+
+    # ─────────────────────────────────────────────
+    # 4. FETCH DATA
+    # ─────────────────────────────────────────────
+    shows = _fetch_shows_from_db(supabase_client)
+    logger.debug(f"📦 show_list_view: Total shows loaded: {len(shows)}")
+
+    # Filter theo search
+    if search_query and search_query.strip():
+        q = search_query.strip().lower()
+        shows = [s for s in shows if q in s.get("title", "").lower()]
+        logger.debug(f"🔍 show_list_view: After filter '{q}': {len(shows)} shows remain.")
+
+    # ─────────────────────────────────────────────
+    # 5. RENDER GRID 2 CỘT
+    # ─────────────────────────────────────────────
+    if not shows:
+        logger.info("ℹ️ show_list_view: Empty state — không có show để hiển thị.")
+        st.markdown("""
+        <div class="sl-empty-state">
+            <div class="sl-empty-icon">🎧</div>
+            <div class="sl-empty-title">No shows yet</div>
+            <div class="sl-empty-sub">Paste an Apple Podcast URL above<br/>to add your first show.</div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        logger.debug(f"🗂️ show_list_view: Rendering {len(shows)} shows in 2-col grid.")
+        # Render từng hàng: 2 card/hàng
+        for row_idx in range(0, len(shows), 2):
+            col_left, col_right = st.columns(2, gap="medium")
+
+            with col_left:
+                _render_show_card_v4(shows[row_idx], row_idx)
+                logger.debug(f"✅ show_list_view: Card [{row_idx}] rendered — '{shows[row_idx]['title']}'")
+
+            if row_idx + 1 < len(shows):
+                with col_right:
+                    _render_show_card_v4(shows[row_idx + 1], row_idx + 1)
+                    logger.debug(f"✅ show_list_view: Card [{row_idx+1}] rendered — '{shows[row_idx+1]['title']}'")
+
+    logger.info("✅ show_list_view: render_podcast_discover_page() — DONE.")

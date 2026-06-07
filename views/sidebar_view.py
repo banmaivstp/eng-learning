@@ -172,21 +172,6 @@ def render_sidebar_navigation(supabase_client=None):
         st.session_state.current_page = "Học tập"
         st.rerun()
 
-    # --- QUIZ ROOM ---
-    is_active_quiz = current == "Quiz"
-    st.sidebar.markdown(f"""
-    <div class="sb-nav-item {'sb-nav-active' if is_active_quiz else ''}">
-        <span class="sb-nav-icon {'sb-nav-icon-active' if is_active_quiz else ''}">{ICON_QUIZ}</span>
-        <span class="sb-nav-label {'sb-nav-label-active' if is_active_quiz else ''}">Quiz Room</span>
-        <span class="sb-nav-chevron">{ICON_CHEVRON}</span>
-    </div>
-    """, unsafe_allow_html=True)
-    if st.sidebar.button("Quiz Room", key="nav_quiz", use_container_width=True):
-        logger.info("📌 sidebar_view: Chuyển trang → Quiz")
-        st.session_state.current_page = "Quiz"
-        st.rerun()
-
-    st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
     # --- PADDING ĐỆM — tránh nội dung nav bị che bởi bottom fixed section ---
     st.sidebar.markdown('<div class="sb-nav-bottom-padding"></div>', unsafe_allow_html=True)
