@@ -127,27 +127,33 @@ def save_learning_history(user_id: str, episode_id: str, score: int, duration_se
 # CACHE DATA LAYER
 # =====================================================
 
-def get_cached_episode_data(show_url: str, episode_title: str):
+def get_cached_episode_data(episode_id: str):
+    """
+    Truy vấn cache episode theo episode_id.
+    Chỉ trả về row nếu CẢ HAI transcript VÀ quiz_json đều có dữ liệu,
+    tránh cache miss giả khiến AI pipeline bị gọi lại mỗi lần rerender.
+    """
     if not supabase:
         return None
 
     try:
-        show_res = supabase.table("shows").select("id").eq("apple_show_url", show_url).execute()
-        if not show_res.data:
-            return None
-        
-        show_id = show_res.data[0]["id"]
-
-        ep_res = (
+        res = (
             supabase.table("episodes")
-            .select("*")
-            .eq("show_id", show_id)
-            .eq("title", episode_title)
+            .select("audio_url,transcript,quiz_json")
+            .eq("id", str(episode_id))
             .execute()
         )
 
-        if ep_res.data:
-            return ep_res.data[0]
+        if not res.data:
+            return None
+
+        row = res.data[0]
+
+        # Validate đủ cả 2 field — nếu thiếu 1 thì cache miss
+        # để AI pipeline chạy lại và lưu cache đầy đủ
+        if row.get("transcript") and row.get("quiz_json"):
+            return row
+
         return None
 
     except Exception as e:

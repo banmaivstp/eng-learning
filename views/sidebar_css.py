@@ -4,11 +4,11 @@ import logging
 logger = logging.getLogger("views.sidebar_css")
 
 # =====================================================
-# SIDEBAR CSS — Tầng Style độc lập
-# Tách từ views/styles.py (inject_sidebar_css + inject_sidebar_toggle_fix)
-# Quy tắc: KHÔNG thay đổi bất kỳ nội dung CSS nào so với bản gốc.
+# SIDEBAR CSS — Tách độc lập từ styles.py
+# Toàn bộ CSS phong cách Gen Z Dark UI cho Sidebar
+# Bao gồm: v3 Layout Fix + v4 Enhancement + Dashboard Bug Fix
+# QUY TẮC: KHÔNG THAY ĐỔI LOGIC — CHỈ BÓC TÁCH VỊ TRÍ
 # =====================================================
-
 
 def inject_sidebar_css():
     """
@@ -17,8 +17,13 @@ def inject_sidebar_css():
     - Nav menu ngay sau profile với gap hợp lý
     - Settings + Logout fixed cứng ở đáy sidebar (position: fixed)
     - Không chỉnh sửa inject_global_css() cũ
+
+    Bao gồm luôn:
+    - v4 Enhancement: avatar lớn hơn, Pro badge, active nav rõ hơn
+    - Dashboard Bug Fix: sb-bottom-section sticky thay fixed
+      (tránh che sidebar toggle button của Streamlit)
     """
-    logger.debug("🎨 Injecting Sidebar Gen Z CSS v3 — layout fixed.")
+    logger.debug("🎨 Injecting Sidebar Gen Z CSS (sidebar_css.py) — v3+v4+bugfix.")
     st.markdown("""
     <style>
         /* =====================================================
@@ -432,10 +437,34 @@ def inject_sidebar_css():
             width: 260px !important;
         }
 
+        /* =====================================================
+           BUG FIX: sb-bottom-section position:sticky
+           Lý do: position:fixed + left:0 + z-index:100 che
+           toggle button sidebar của Streamlit → sidebar không
+           mở lại được. Fix: sticky + left:auto + z-index thấp.
+           (Tích hợp từ inject_dashboard_css bug fix)
+        ===================================================== */
+        .sb-bottom-section {
+            position: sticky !important;
+            bottom: 0 !important;
+            left: auto !important;
+            width: auto !important;
+            z-index: 10 !important;
+        }
+
     </style>
     """, unsafe_allow_html=True)
-    logger.debug("✅ Sidebar Gen Z CSS v3/v4 injected successfully.")
+    logger.debug("✅ Sidebar CSS (sidebar_css.py) injected successfully.")
 
+
+# =====================================================
+# SIDEBAR TOGGLE FIX — Tách từ styles.py
+# Mục đích: Fix nút mở/đóng sidebar luôn hiển thị và bấm được
+# Nguyên nhân bug: inject_global_css() đặt overflow:hidden trên
+#   html/body + header {visibility:hidden} ẩn toàn bộ thanh header
+#   chứa nút toggle → sidebar đóng xong không mở lại được.
+# GỌI HÀM NÀY SAU TẤT CẢ inject_*_css() khác trong app.py.
+# =====================================================
 
 def inject_sidebar_toggle_fix():
     """

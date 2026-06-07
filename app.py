@@ -25,6 +25,8 @@ from views.styles import (
     inject_podcast_list_css,
     inject_show_list_css,
     inject_podcast_list_view_css,
+    inject_quiz_detail_css,
+    inject_quiz_detail_patch_css,
 )
 # Sidebar CSS đã được tách ra tầng Style độc lập — views/sidebar_css.py
 from views.sidebar_css import inject_sidebar_css, inject_sidebar_toggle_fix
@@ -36,6 +38,8 @@ from views.sidebar_view import render_sidebar_navigation
 from views.show_list_view import render_podcast_discover_page
 # Import podcast list view — Milestone 2 (Episode List of a Show)
 from views.podcast_list_view import render_podcast_list_page
+# Import quiz detail view — Milestone 3+4+5
+from views.quiz_detail_view import render_quiz_detail_page
 
 # Khởi tạo Logger định danh cho luồng điều phối chính app
 logger = logging.getLogger("app_main")
@@ -64,6 +68,12 @@ inject_show_list_css()
 
 # --- INJECT PODCAST LIST VIEW CSS (Milestone 2 — Episode List, prefix pcl-) ---
 inject_podcast_list_view_css()
+
+# --- INJECT QUIZ DETAIL CSS (Milestone 3+4+5) ---
+inject_quiz_detail_css()
+
+# --- INJECT QUIZ DETAIL PATCH CSS (v20260606: fix back button overlap, player height, radio options) ---
+inject_quiz_detail_patch_css()
 
 logger.debug("✅ app_main: All CSS injected. Sidebar toggle fix applied.")
 
@@ -112,6 +122,11 @@ else:
         # Màn hình danh sách bài học (Episode List) của show đã chọn
         logger.info("📋 app_main: Rendering Episode List (podcast_list_view).")
         render_podcast_list_page(supabase_client=supabase)
+
+    elif current_page == "Episode Detail":
+        # Màn hình phòng học: Audio Player + Transcript + Quiz
+        logger.info("🎬 app_main: Rendering Quiz Detail (quiz_detail_view).")
+        render_quiz_detail_page(supabase_client=supabase, user_id=str(user_id) if user_id else None)
 
     else:
         # --- NHÁNH HIỂN THỊ DANH SÁCH BÀI HỌC VÀ QUIZ FLOW GỐC CỦA HỆ THỐNG ---

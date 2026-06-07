@@ -3,11 +3,10 @@ import logging
 import jwt
 
 # =====================================================
-# TẦNG GIAO DIỆN (VIEW): views/sidebar_view.py
-# Import CSS từ tầng Style độc lập — views/sidebar_css.py
-# Quy tắc: KHÔNG thay đổi bất kỳ logic hay content nào so với bản gốc.
+# TẦNG STYLE — Import CSS độc lập của Sidebar
+# sidebar_css.py chứa toàn bộ CSS Gen Z Dark UI cho Sidebar
 # =====================================================
-from views.sidebar_css import inject_sidebar_css, inject_sidebar_toggle_fix
+from views.sidebar_css import inject_sidebar_css
 
 logger = logging.getLogger("views.sidebar_view")
 
@@ -80,6 +79,9 @@ def render_sidebar_navigation(supabase_client=None):
     Logic điều hướng giữ nguyên hoàn toàn.
     """
     logger.debug("🎯 Rendering sidebar navigation layout (v2 - Gen Z UI).")
+
+    # --- Inject CSS của Sidebar (tầng Style độc lập) ---
+    inject_sidebar_css()
 
     # --- Khởi tạo state mặc định ---
     if "current_page" not in st.session_state:
