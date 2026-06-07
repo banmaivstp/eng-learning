@@ -1,9 +1,12 @@
+# ==========================================
+# FILE: views/login_css.py
+# ==========================================
 import streamlit as st
 
 def inject_login_css():
     """
     Nhúng toàn bộ CSS chuyên biệt cho giao diện Đăng nhập (Login View).
-    Giúp login_view.py chạy độc lập không cần styles.py.
+    Giúp login_view.py chạy độc lập không cần phụ thuộc vào styles.py.
     """
     st.markdown("""
     <style>
