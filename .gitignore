@@ -3,6 +3,8 @@
 modules/.bk
 views/.bk
 __pycache__/
+.vscode/
+.gitignore
 *.pyc
 *.log
 .00_resource/~$dbStructure.xlsx

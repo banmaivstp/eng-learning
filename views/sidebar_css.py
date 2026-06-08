@@ -49,10 +49,11 @@ def inject_sidebar_css():
            ẨN NÚT STREAMLIT MẶC ĐỊNH — giữ click area, bỏ visual
            Kỹ thuật: overlay button trong suốt đặt đè lên HTML div
         ===================================================== */
+        
         [data-testid="stSidebar"] .stButton > button {
             opacity: 0 !important;
-            height: 0px !important;
-            min-height: 0px !important;
+            height: 54px !important; /* Ép nút thật có chiều cao bằng đúng item HTML */
+            min-height: 54px !important;
             padding: 0 !important;
             margin: 0 !important;
             border: none !important;
@@ -63,7 +64,8 @@ def inject_sidebar_css():
             display: block !important;
             pointer-events: auto !important;
         }
-
+        
+        /* Vị trí cần sửa 1: Tìm khối selector [data-testid="stSidebar"] .stButton (khoảng dòng 55-61 trong file gốc).
         /* Wrapper stButton: kéo ngược lên đè lên div HTML phía trên */
         [data-testid="stSidebar"] .stButton {
             margin-top: -54px !important;
@@ -405,11 +407,11 @@ def inject_sidebar_css():
         /* --- BUTTON OVERLAY: Streamlit button đè lên nav-item HTML ---
              Điều chỉnh margin-top để khớp với chiều cao nav-item 54px */
         [data-testid="stSidebar"] .stButton {
-            margin-top: -58px !important;
-            height: 58px !important;
+            margin-top: -54px !important;
+            height: 54px !important;
         }
         [data-testid="stSidebar"] .stButton > button {
-            height: 58px !important;
+            height: 54px !important;
         }
 
         /* --- BOTTOM BUTTONS: bo góc đẹp hơn, tương thích mockup --- */

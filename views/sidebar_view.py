@@ -92,7 +92,6 @@ def render_sidebar_navigation(supabase_client=None):
     profile = _get_user_profile_from_session()
     user_name = profile.get("name", "Học viên")
     user_avatar = profile.get("picture", "")
-    user_email = profile.get("email", "")
 
     # --- Lấy streak count ---
     streak_count = 0
@@ -118,9 +117,6 @@ def render_sidebar_navigation(supabase_client=None):
         else '<div class="sb-avatar-placeholder">👤</div>'
     )
 
-    # Mockup: Pro badge (cyan) ở trên, streak badge ở dưới (nếu có)
-    streak_display = f'<div class="sb-streak-badge">🔥 {streak_count} ngày</div>' 
-
     st.sidebar.markdown(f"""
     <div class="sb-profile-section">
         <div class="sb-avatar-ring">
@@ -133,8 +129,6 @@ def render_sidebar_navigation(supabase_client=None):
     </div>
     <div class="sb-divider"></div>
     """, unsafe_allow_html=True)
-    
-
 
     logger.debug(f"🖼️ sidebar_view: Đã render profile section — user={user_name}, streak={streak_count}, pro_badge=True.")
 
@@ -144,35 +138,36 @@ def render_sidebar_navigation(supabase_client=None):
 
     # Render từng mục menu dưới dạng HTML thuần (ảo), dùng st.sidebar.button để nhận click
     st.sidebar.markdown('<div class="sb-nav-section">', unsafe_allow_html=True)
-
+    
     # --- DASHBOARD ---
     is_active_dash = current == "Dashboard"
-    st.sidebar.markdown(f"""
+    dash_box = st.sidebar.container()
+    dash_box.markdown(f"""
     <div class="sb-nav-item {'sb-nav-active' if is_active_dash else ''}">
         <span class="sb-nav-icon {'sb-nav-icon-active' if is_active_dash else ''}">{ICON_DASHBOARD}</span>
         <span class="sb-nav-label {'sb-nav-label-active' if is_active_dash else ''}">Dashboard</span>
         <span class="sb-nav-chevron">{ICON_CHEVRON}</span>
     </div>
     """, unsafe_allow_html=True)
-    if st.sidebar.button("Dashboard", key="nav_dashboard", use_container_width=True):
+    if dash_box.button("Dashboard", key="nav_dashboard", use_container_width=True):
         logger.info("📌 sidebar_view: Chuyển trang → Dashboard")
         st.session_state.current_page = "Dashboard"
         st.rerun()
 
     # --- DISCOVER (Danh sách bài học) ---
     is_active_disc = current == "Học tập"
-    st.sidebar.markdown(f"""
+    disc_box = st.sidebar.container()
+    disc_box.markdown(f"""
     <div class="sb-nav-item {'sb-nav-active' if is_active_disc else ''}">
         <span class="sb-nav-icon {'sb-nav-icon-active' if is_active_disc else ''}">{ICON_DISCOVER}</span>
         <span class="sb-nav-label {'sb-nav-label-active' if is_active_disc else ''}">Discover</span>
         <span class="sb-nav-chevron">{ICON_CHEVRON}</span>
     </div>
     """, unsafe_allow_html=True)
-    if st.sidebar.button("Discover", key="nav_discover", use_container_width=True):
+    if disc_box.button("Discover", key="nav_discover", use_container_width=True):
         logger.info("📌 sidebar_view: Chuyển trang → Học tập")
         st.session_state.current_page = "Học tập"
         st.rerun()
-
 
     # --- PADDING ĐỆM — tránh nội dung nav bị che bởi bottom fixed section ---
     st.sidebar.markdown('<div class="sb-nav-bottom-padding"></div>', unsafe_allow_html=True)
