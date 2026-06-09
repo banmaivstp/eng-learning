@@ -1,5 +1,6 @@
 # ==========================================
 # FILE: modules/database.py
+# TẦNG MODEL — Truy xuất dữ liệu từ Supabase
 # ==========================================
 import logging
 from datetime import date, datetime, timedelta
@@ -21,7 +22,6 @@ def upsert_user_profile(user_data: dict):
         return
 
     try:
-        # Chuyển ID sang kiểu text tường minh str() tương thích 100% cấu trúc cột TEXT của database cấu hình
         payload = {
             "id": str(user_data["id"]),
             "email": user_data.get("email"),
@@ -130,8 +130,7 @@ def save_learning_history(user_id: str, episode_id: str, score: int, duration_se
 def get_cached_episode_data(episode_id: str):
     """
     Truy vấn cache episode theo episode_id.
-    Chỉ trả về row nếu CẢ HAI transcript VÀ quiz_json đều có dữ liệu,
-    tránh cache miss giả khiến AI pipeline bị gọi lại mỗi lần rerender.
+    Chỉ trả về row nếu CẢ HAI transcript VÀ quiz_json đều có dữ liệu.
     """
     if not supabase:
         return None
@@ -149,8 +148,6 @@ def get_cached_episode_data(episode_id: str):
 
         row = res.data[0]
 
-        # Validate đủ cả 2 field — nếu thiếu 1 thì cache miss
-        # để AI pipeline chạy lại và lưu cache đầy đủ
         if row.get("transcript") and row.get("quiz_json"):
             return row
 
@@ -159,6 +156,83 @@ def get_cached_episode_data(episode_id: str):
     except Exception as e:
         logger.exception(f"get_cached_episode_data error: {e}")
         return None
+
+
+# =====================================================
+# EPISODES LAYER — THÊM MỚI ĐỂ FIX LỖI EPISODE LIST
+# =====================================================
+
+def get_episodes_by_show_id(supabase_client, show_id: str) -> list:
+    """
+    Truy vấn danh sách episodes thuộc một show theo show_id.
+
+    LÝ DO THÊM HÀM NÀY (không sửa code cũ):
+    - podcast_list_view.py cần query episodes theo show_id
+    - Tập trung logic DB vào tầng Model thay vì rải rác trong View
+    - Fix lỗi: show mới thêm có episodes trong DB nhưng View không load được
+      vì thiếu hàm Model tập trung, dẫn đến query sai hoặc bị bỏ qua
+
+    Returns:
+        list of dicts: [{"id", "title", "audio_url", "created_at"}, ...]
+        Trả về [] nếu lỗi hoặc không có episode.
+    """
+    client = supabase_client or supabase
+    if not client:
+        logger.warning("get_episodes_by_show_id: No supabase client available.")
+        return []
+
+    if not show_id:
+        logger.warning("get_episodes_by_show_id: show_id rỗng.")
+        return []
+
+    try:
+        logger.debug(f"📋 get_episodes_by_show_id: Querying show_id={show_id}")
+        res = (
+            client.table("episodes")
+            .select("id, title, audio_url, created_at")
+            .eq("show_id", str(show_id))
+            .order("created_at", desc=True)
+            .execute()
+        )
+
+        episodes = res.data or []
+        logger.info(f"✅ get_episodes_by_show_id: {len(episodes)} episodes cho show {show_id}")
+        return episodes
+
+    except Exception as e:
+        logger.exception(f"get_episodes_by_show_id error: {e}")
+        return []
+
+
+def get_episode_count_by_show_id(supabase_client, show_id: str) -> int:
+    """
+    Đếm số episodes của một show — dùng head=True để Supabase trả .count chính xác.
+
+    LÝ DO THÊM HÀM NÀY:
+    - Bug trong _fetch_shows_from_db(): dùng count="exact" nhưng KHÔNG dùng head=True
+      → supabase-py client chỉ populate .count khi dùng head=True hoặc execute() với
+      prefer=count header đúng cách. Kết quả: .count = None → episode_count = 0 sai.
+    - Tách logic đếm ra Model để View không cần tự query DB.
+    """
+    client = supabase_client or supabase
+    if not client or not show_id:
+        return 0
+
+    try:
+        res = (
+            client.table("episodes")
+            .select("id", count="exact")
+            .eq("show_id", str(show_id))
+            .execute()
+        )
+        # supabase-py trả về .count khi select với count="exact"
+        count = res.count if res.count is not None else len(res.data or [])
+        logger.debug(f"📊 get_episode_count_by_show_id: show={show_id} → {count} eps")
+        return count
+
+    except Exception as e:
+        logger.exception(f"get_episode_count_by_show_id error: {e}")
+        return 0
 
 
 # =====================================================
@@ -197,13 +271,12 @@ def get_user_analytics(user_id: str) -> dict:
             return analytics
 
         df = pd.DataFrame(history_res.data)
-        
+
         analytics["total_episodes"] = len(df)
         total_seconds = df["duration_seconds"].sum()
         analytics["total_hours"] = round(total_seconds / 3600, 1)
         analytics["avg_score"] = round(df["score"].mean(), 1) if not df.empty else 0.0
 
-        # MỚI — dedup theo show_id, lấy tối đa 5 show duy nhất
         seen_shows = set()
         recent_list = []
         for _, row in df.iterrows():
@@ -212,8 +285,8 @@ def get_user_analytics(user_id: str) -> dict:
             show_info = ep.get("shows") or {}
             show_title = show_info.get("title") or ep.get("title") or "Bài học không tên"
             cover = show_info.get("cover_image") or ""
-            
-            key = show_id or show_title  # dedup key
+
+            key = show_id or show_title
             if key in seen_shows:
                 continue
             seen_shows.add(key)
@@ -222,11 +295,11 @@ def get_user_analytics(user_id: str) -> dict:
             try:
                 dt_obj = datetime.fromisoformat(completed_dt.replace("Z", "+00:00"))
                 formatted_date = dt_obj.strftime("%d/%m/%Y")
-            except:
+            except Exception:
                 formatted_date = str(completed_dt)[:10]
 
             recent_list.append({
-                "show_id":    show_id,      # FIX: cần để dashboard_view set selected_show["id"]
+                "show_id":    show_id,
                 "show_title": show_title,
                 "cover_image": cover,
                 "score": int(row["score"]),

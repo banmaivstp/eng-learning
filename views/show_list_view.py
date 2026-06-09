@@ -1,37 +1,25 @@
+# ==========================================
+# FILE: views/show_list_view.py
+# TẦNG VIEW — Màn hình Your Podcast Library
+# ==========================================
 import streamlit as st
 import logging
 
-# =====================================================
-# TẦNG STYLE: Import CSS từ file riêng biệt
-# show_list_css.py chứa toàn bộ CSS của màn này
-# =====================================================
 from views.show_list_css import inject_show_list_card_button_css
+# FIX: Import hàm Model tập trung thay vì tự query trong View
+from modules.database import get_episode_count_by_show_id
 
 logger = logging.getLogger("views.show_list_view")
-
-# =====================================================
-# DỮ LIỆU MẪU — fallback khi DB chưa có show nào
-# Production: dữ liệu thực từ Supabase table "shows"
-# =====================================================
-SAMPLE_SHOWS = [
-    {"id": "sample-1", "title": "English Listening Daily",  "cover_image": None, "icon": "🎙️", "episode_count": 12},
-    {"id": "sample-2", "title": "Daily Conversations",      "cover_image": None, "icon": "🧠", "episode_count": 12},
-    {"id": "sample-3", "title": "Business English Podcast", "cover_image": None, "icon": "☕", "episode_count": 18},
-    {"id": "sample-4", "title": "Real Life English",        "cover_image": None, "icon": "🌆", "episode_count": 12},
-    {"id": "sample-5", "title": "Speak Better Every Day",   "cover_image": None, "icon": "🎧", "episode_count": 12},
-    {"id": "sample-6", "title": "Travel & Culture Stories", "cover_image": None, "icon": "🏔️", "episode_count": 12},
-]
 
 
 def _fetch_shows_from_db(supabase_client) -> list:
     """
     Truy vấn danh sách shows từ Supabase table 'shows'.
-    Trả về list dicts: id, title, cover_image, apple_show_url, episode_count, icon.
-    Fallback: SAMPLE_SHOWS nếu lỗi hoặc DB rỗng.
+    Trả về [] nếu DB rỗng, lỗi, hoặc không có client — không dùng sample data.
     """
     if not supabase_client:
-        logger.warning("⚠️ show_list_view: supabase_client = None — sử dụng sample data.")
-        return SAMPLE_SHOWS
+        logger.warning("⚠️ show_list_view: supabase_client = None.")
+        return []
 
     try:
         logger.debug("🔍 show_list_view: Querying Supabase table 'shows'...")
@@ -43,15 +31,8 @@ def _fetch_shows_from_db(supabase_client) -> list:
             logger.info(f"✅ show_list_view: Fetched {len(res.data)} shows from DB.")
             shows_with_count = []
             for show in res.data:
-                try:
-                    ep_res = supabase_client.table("episodes").select(
-                        "id", count="exact"
-                    ).eq("show_id", show["id"]).execute()
-                    episode_count = ep_res.count if ep_res.count is not None else 0
-                    logger.debug(f"📊 show_list_view: '{show['title']}' — {episode_count} episodes.")
-                except Exception as ep_err:
-                    logger.warning(f"⚠️ show_list_view: Không đếm được episodes cho show {show.get('id')}: {ep_err}")
-                    episode_count = 0
+                episode_count = get_episode_count_by_show_id(supabase_client, show["id"])
+                logger.debug(f"📊 show_list_view: '{show['title']}' — {episode_count} episodes.")
                 shows_with_count.append({
                     **show,
                     "episode_count": episode_count,
@@ -59,17 +40,23 @@ def _fetch_shows_from_db(supabase_client) -> list:
                 })
             return shows_with_count
         else:
-            logger.info("ℹ️ show_list_view: Bảng 'shows' rỗng — dùng sample data.")
-            return SAMPLE_SHOWS
+            logger.info("ℹ️ show_list_view: Bảng 'shows' rỗng.")
+            return []
 
     except Exception as e:
         logger.error(f"🚨 show_list_view: Lỗi query Supabase 'shows': {e}")
-        return SAMPLE_SHOWS
+        return []
 
 
 def _render_show_card_v4(show: dict, card_idx: int):
     """
     Render show card v4 — col_info (HTML visual) + col_btn (pill button).
+
+    FIX LỖI EPISODE LIST:
+    - selected_show phải chứa ĐỦ các field mà podcast_list_view cần:
+      id, title, cover_image, apple_show_url, episode_count
+    - Trước đây: show dict từ DB có thể thiếu field nếu query SELECT không đủ cột
+    - Nay: đảm bảo build selected_show dict đầy đủ trước khi set vào session_state
     UI giữ nguyên 100%.
     """
     cover = show.get("cover_image")
@@ -106,7 +93,20 @@ def _render_show_card_v4(show: dict, card_idx: int):
         st.markdown('<div class="sl-open-btn-wrap">', unsafe_allow_html=True)
         if st.button("▶ Open", key=f"slv4_{show_id}_{card_idx}", use_container_width=False):
             logger.info(f"🎯 show_list_view: User clicked Open card[{card_idx}] — '{title}' (id={show_id})")
-            st.session_state["selected_show"] = show
+
+            # FIX: Build selected_show dict đầy đủ, đảm bảo podcast_list_view
+            # nhận được show_id hợp lệ để query episodes.
+            # Trước đây: set trực tiếp `show` dict có thể thiếu field hoặc
+            # có field thừa không nhất quán giữa DB row và sample data.
+            selected_show = {
+                "id":             show_id,
+                "title":          title,
+                "cover_image":    cover,
+                "apple_show_url": show.get("apple_show_url", ""),
+                "episode_count":  ep_count,
+                "icon":           icon,
+            }
+            st.session_state["selected_show"] = selected_show
             st.session_state["current_page"] = "Show Detail"
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
@@ -118,17 +118,14 @@ def _render_add_show_section(supabase_client):
 
     Luồng 3 bước:
       Bước 1 — Scraper : gọi get_episode_list_from_show() thu thập RSS data
-      Bước 2 — DB Sync : lưu show + episodes vào Supabase để cache về sau
+      Bước 2 — DB Sync : lưu show + episodes vào Supabase
       Bước 3 — Rerun   : st.rerun() reload page, grid render lại từ DB sạch
 
     MAPPING FIELD (scraper → DB schema episodes):
-      scraper["apple_url"]  → episodes.audio_url   (URL trực tiếp tới file audio)
+      scraper["apple_url"]  → episodes.audio_url
       scraper["title"]      → episodes.title
-      scraper["image"]      → KHÔNG có cột tương ứng trong DB → bỏ qua
-      Duplicate check       → dùng (show_id, title) vì không có cột apple_url trong episodes
-
-    DB schema episodes (từ dbStructure):
-      id, show_id, title, audio_url, transcript, quiz_json, created_at
+      scraper["image"]      → không có cột tương ứng → bỏ qua
+      Duplicate check       → dùng (show_id, title)
     """
     logger.debug("🔧 show_list_view: Rendering Add Show expander.")
     with st.expander("➕  Add New Show  —  Paste Apple Podcast URL", expanded=False):
@@ -152,7 +149,7 @@ def _render_add_show_section(supabase_client):
             logger.info(f"🔍 show_list_view: Bắt đầu scrape: {input_url}")
             with st.spinner("AI đang quét dữ liệu bài học..."):
 
-                # ── BƯỚC 1: Scraper — thu thập dữ liệu từ Apple RSS ──
+                # ── BƯỚC 1: Scraper ──
                 try:
                     from modules.scraper import get_episode_list_from_show
                     show_data = get_episode_list_from_show(input_url.strip())
@@ -208,8 +205,6 @@ def _render_add_show_section(supabase_client):
                         )
 
                     # 2b. Insert Episodes — chỉ insert tập chưa tồn tại
-                    # Check duplicate bằng (show_id + title) vì DB không có cột apple_url.
-                    # audio_url lưu episode_url từ scraper (link trực tiếp tới file audio/RSS).
                     existing_ep_res = supabase_client.table("episodes").select(
                         "title"
                     ).eq("show_id", show_id).execute()
@@ -231,8 +226,6 @@ def _render_add_show_section(supabase_client):
                             "id": str(uuid.uuid4()),
                             "show_id": show_id,
                             "title": ep_title,
-                            # audio_url lưu URL thô từ RSS enclosure/link
-                            # (sẽ được resolve thành direct audio khi user mở episode)
                             "audio_url": ep.get("apple_url", ""),
                         }).execute()
                         inserted += 1
@@ -250,15 +243,13 @@ def _render_add_show_section(supabase_client):
                     logger.error(f"🚨 show_list_view: DB sync error: {db_err}")
                     st.warning(f"Lấy dữ liệu thành công nhưng lưu DB gặp sự cố: {db_err}")
 
-                # ── BƯỚC 3: Reload page — grid tự render lại từ DB ──
+                # ── BƯỚC 3: Reload page ──
                 st.rerun()
 
 
 def render_podcast_discover_page(supabase_client=None):
     """
     Màn hình 'Your Podcast Library' — render khi sidebar Discover được click.
-    Tham số supabase_client khớp với cách gọi từ app.py:
-        render_podcast_discover_page(supabase_client=supabase)
     """
     logger.info("📻 show_list_view: render_podcast_discover_page() — START.")
 
@@ -284,22 +275,38 @@ def render_podcast_discover_page(supabase_client=None):
     # 3. Add show section
     _render_add_show_section(supabase_client)
 
-    # 4. Fetch data từ DB
-    shows = _fetch_shows_from_db(supabase_client)
-    logger.debug(f"📦 show_list_view: Total shows loaded: {len(shows)}")
+    # 4. Fetch data từ DB — lưu vào all_shows để phân biệt "DB rỗng" vs "filter rỗng"
+    all_shows = _fetch_shows_from_db(supabase_client)
+    logger.debug(f"📦 show_list_view: Total shows loaded: {len(all_shows)}")
 
     # 5. Filter theo search
     if search_query and search_query.strip():
         q = search_query.strip().lower()
-        shows = [s for s in shows if q in s.get("title", "").lower()]
+        shows = [s for s in all_shows if q in s.get("title", "").lower()]
+    else:
+        shows = all_shows
 
     # 6. Render grid 2 cột
-    if not shows:
+    # Phân biệt 2 trạng thái rỗng:
+    # - all_shows rỗng  → DB chưa có show nào → hiển thị hướng dẫn thêm show
+    # - shows rỗng sau filter → search không khớp → hiển thị "no results"
+    db_is_empty = len(all_shows) == 0
+    search_active = bool(search_query and search_query.strip())
+
+    if db_is_empty:
         st.markdown("""
         <div class="sl-empty-state">
             <div class="sl-empty-icon">🎧</div>
-            <div class="sl-empty-title">No shows yet</div>
-            <div class="sl-empty-sub">Paste an Apple Podcast URL above<br/>to add your first show.</div>
+            <div class="sl-empty-title">No show.</div>
+            <div class="sl-empty-sub">Please click on <span style="color:#00F2FE;font-weight:700;">Add New Show</span> for updating.</div>
+        </div>
+        """, unsafe_allow_html=True)
+    elif search_active and not shows:
+        st.markdown("""
+        <div class="sl-empty-state">
+            <div class="sl-empty-icon">🔍</div>
+            <div class="sl-empty-title">No results found.</div>
+            <div class="sl-empty-sub">Try a different keyword.</div>
         </div>
         """, unsafe_allow_html=True)
     else:

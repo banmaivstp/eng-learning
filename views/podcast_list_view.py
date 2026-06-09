@@ -1,278 +1,326 @@
-"""
-views/podcast_list_view.py
-===========================
-TẦNG GIAO DIỆN (VIEW) — Màn hình "Danh sách bài học".
-Hiển thị tất cả episodes của một show đã chọn.
-
-Luồng điều hướng:
-    show_list_view → (click show card) → podcast_list_view → (click episode) → quiz_detail_view
-
-Quy tắc code:
-    - KHÔNG thay đổi logic DB/scraper — chỉ thay đổi UI
-    - CSS được inject qua views/podcast_list_css.py (inject_podcast_list_view_css) — KHÔNG thêm CSS inline lớn
-    - Log đầy đủ theo level: DEBUG, INFO, WARNING, ERROR
-    - Không cuộn trang quá nhiều — tối ưu "vùng đất vàng"
-"""
-
+# ==========================================
+# FILE: views/podcast_list_view.py
+# TẦNG VIEW — Màn hình Episode List của một Show
+# ==========================================
 import streamlit as st
 import logging
 
-# TẦNG STYLE: Import CSS độc lập của màn hình này
-from views.podcast_list_css import inject_podcast_list_view_css
+# TẦNG MODEL — dùng hàm tập trung, không tự query DB trong View
+from modules.database import get_episodes_by_show_id
 
 logger = logging.getLogger("views.podcast_list_view")
 
 
 # =====================================================
-# SAMPLE EPISODES — fallback khi DB chưa có episode nào
+# TẦNG STYLE — CSS riêng cho màn này (prefix: pcl-)
 # =====================================================
-SAMPLE_EPISODES = [
-    {
-        "id": "ep-sample-1",
-        "title": 'Bài 156: Stop Saying "Okay" All the Time — Sound More Natural in English',
-        "audio_url": None,
-        "duration": "07:12",
-        "created_at": "2026-06-01"
-    },
-    {
-        "id": "ep-sample-2",
-        "title": 'Bài 155: Stop Saying "Maybe" All the Time | Sound More Natural in English',
-        "audio_url": None,
-        "duration": "06:48",
-        "created_at": "2026-05-28"
-    },
-    {
-        "id": "ep-sample-3",
-        "title": 'Bài 154: Stop Saying "Really" All the Time — Sound More Natural in English',
-        "audio_url": None,
-        "duration": "08:55",
-        "created_at": "2026-05-21"
-    },
-]
 
-
-def _fetch_episodes_from_db(supabase_client, show_id: str) -> list:
+def _inject_podcast_list_css():
     """
-    Truy vấn danh sách episodes từ Supabase theo show_id.
-    Trả về list dicts: id, title, audio_url, created_at.
-    Fallback: SAMPLE_EPISODES nếu lỗi hoặc DB rỗng.
+    Inject CSS riêng cho Episode List view.
+    Prefix 'pcl-' để không conflict với sl-, db-, sb-.
     """
-    if not supabase_client:
-        logger.warning("⚠️ podcast_list_view: supabase_client = None — dùng sample episodes.")
-        return SAMPLE_EPISODES
+    st.markdown("""
+    <style>
+        /* ── BACK BUTTON ── */
+        .pcl-back-wrap button {
+            background: transparent !important;
+            border: 1px solid rgba(255,255,255,0.10) !important;
+            color: #94A3B8 !important;
+            border-radius: 10px !important;
+            font-size: 13px !important;
+            font-weight: 600 !important;
+            padding: 6px 14px !important;
+            min-height: unset !important;
+            height: 34px !important;
+            transition: border-color 0.15s ease, color 0.15s ease !important;
+        }
+        .pcl-back-wrap button:hover {
+            border-color: rgba(0,242,254,0.40) !important;
+            color: #00F2FE !important;
+        }
 
-    if not show_id or show_id.startswith("sample-"):
-        logger.info("ℹ️ podcast_list_view: show_id là sample — dùng sample episodes.")
-        return SAMPLE_EPISODES
+        /* ── PAGE HEADER ── */
+        .pcl-header {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            margin: 14px 0 22px 0;
+        }
+        .pcl-cover {
+            width: 80px;
+            height: 80px;
+            border-radius: 14px;
+            object-fit: cover;
+            flex-shrink: 0;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .pcl-cover-placeholder {
+            width: 80px;
+            height: 80px;
+            border-radius: 14px;
+            flex-shrink: 0;
+            background: linear-gradient(135deg, rgba(0,242,254,0.12) 0%, rgba(79,172,254,0.07) 100%);
+            border: 1px solid rgba(0,242,254,0.14);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 34px;
+        }
+        .pcl-show-meta { flex: 1; overflow: hidden; }
+        .pcl-show-title {
+            font-size: 20px;
+            font-weight: 800;
+            color: #F1F5F9 !important;
+            line-height: 1.25;
+            margin-bottom: 5px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .pcl-ep-count {
+            font-size: 13px;
+            font-weight: 600;
+            color: #00F2FE !important;
+        }
 
-    try:
-        logger.debug(f"🔍 podcast_list_view: Query episodes cho show_id='{show_id}'")
-        res = supabase_client.table("episodes").select(
-            "id, title, audio_url, created_at"
-        ).eq("show_id", show_id).order("created_at", desc=True).execute()
+        /* ── EPISODE ITEM ── */
+        .pcl-ep-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            background: rgba(255,255,255,0.025);
+            border: 1px solid rgba(255,255,255,0.055);
+            border-radius: 14px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            transition: background 0.16s ease, border-color 0.16s ease;
+        }
+        .pcl-ep-item:hover {
+            background: rgba(0,242,254,0.04) !important;
+            border-color: rgba(0,242,254,0.18) !important;
+        }
+        .pcl-ep-num {
+            min-width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            background: rgba(0,242,254,0.08);
+            border: 1px solid rgba(0,242,254,0.14);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            color: #00F2FE !important;
+            flex-shrink: 0;
+        }
+        .pcl-ep-title {
+            flex: 1;
+            font-size: 14px;
+            font-weight: 600;
+            color: #E2E8F0 !important;
+            line-height: 1.35;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
 
-        if res.data:
-            logger.info(f"✅ podcast_list_view: Fetched {len(res.data)} episodes cho show '{show_id}'.")
-            return res.data
-        else:
-            logger.info(f"ℹ️ podcast_list_view: Không có episode nào cho show '{show_id}' — dùng sample.")
-            return SAMPLE_EPISODES
+        /* Nút Start bên phải mỗi episode */
+        .pcl-start-wrap {
+            display: flex;
+            align-items: center;
+        }
+        .pcl-start-wrap button {
+            background: rgba(0,242,254,0.10) !important;
+            color: #00F2FE !important;
+            border: 1px solid rgba(0,242,254,0.28) !important;
+            border-radius: 18px !important;
+            font-size: 11.5px !important;
+            font-weight: 700 !important;
+            padding: 5px 12px !important;
+            min-height: unset !important;
+            height: 30px !important;
+            line-height: 1 !important;
+            white-space: nowrap !important;
+            width: auto !important;
+            transition: background 0.14s ease, border-color 0.14s ease !important;
+        }
+        .pcl-start-wrap button:hover {
+            background: rgba(0,242,254,0.20) !important;
+            border-color: rgba(0,242,254,0.55) !important;
+            color: #ffffff !important;
+        }
 
-    except Exception as e:
-        logger.error(f"🚨 podcast_list_view: Lỗi query Supabase 'episodes': {e}")
-        return SAMPLE_EPISODES
+        /* ── EMPTY STATE ── */
+        .pcl-empty {
+            text-align: center;
+            padding: 56px 20px;
+            color: #475569 !important;
+        }
+        .pcl-empty-icon { font-size: 48px; margin-bottom: 14px; }
+        .pcl-empty-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #94A3B8 !important;
+            margin-bottom: 6px;
+        }
+        .pcl-empty-sub {
+            font-size: 13px;
+            color: #475569 !important;
+            line-height: 1.5;
+        }
+
+        /* ── DIVIDER ── */
+        .pcl-divider {
+            height: 1px;
+            background: rgba(255,255,255,0.06);
+            margin: 16px 0 20px 0;
+            border: none;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    logger.debug("✅ podcast_list_view: CSS injected.")
 
 
-def _render_episode_row(ep: dict, ep_idx: int, show_cover: str | None):
-    """
-    Render một hàng episode theo pattern st.columns() — giống dashboard Recent Shows.
-    - Cột trái (col_info): HTML visual [thumbnail + badge + title + duration]
-    - Cột phải (col_btn):  st.button() thật, styled thành pill cyan qua CSS .pcl-start-btn-wrap
+# =====================================================
+# RENDER HELPERS
+# =====================================================
 
-    Không dùng overlay button ẩn hay CSS absolute/opacity hack.
+def _render_header(show: dict):
+    """Render show cover + title + episode count."""
+    cover = show.get("cover_image")
+    title = show.get("title", "Untitled Show")
+    ep_count = show.get("episode_count", 0)
+    icon = show.get("icon", "🎙️")
 
-    Args:
-        ep: dict episode từ DB hoặc sample
-        ep_idx: index để tạo unique key cho button
-        show_cover: cover image URL của show (dùng làm thumb episode)
-    """
-    import html as _html
-
-    ep_id       = ep.get("id", f"ep-{ep_idx}")
-    ep_title    = _html.escape(ep.get("title", f"Episode {ep_idx + 1}"))
-    ep_duration = ep.get("duration", "")
-    badge_num   = ep_idx + 1
-
-    # Thumbnail
-    if show_cover:
-        safe_cover = _html.escape(show_cover, quote=True)
-        thumb_html = f'<img src="{safe_cover}" class="pcl-ep-thumb" alt="ep"/>'
+    if cover:
+        cover_html = f'<img src="{cover}" class="pcl-cover" alt="{title}"/>'
     else:
-        thumb_html = '<div class="pcl-ep-thumb-placeholder">&#127911;</div>'
+        cover_html = f'<div class="pcl-cover-placeholder">{icon}</div>'
 
-    safe_dur = _html.escape(str(ep_duration)) if ep_duration else ""
-    duration_html = (
-        f'<div class="pcl-ep-duration">'
-        f'<span class="pcl-ep-duration-icon">&#127911;</span> {safe_dur}</div>'
-        if safe_dur else ""
-    )
+    st.markdown(f"""
+    <div class="pcl-header">
+        {cover_html}
+        <div class="pcl-show-meta">
+            <div class="pcl-show-title">{title}</div>
+            <div class="pcl-ep-count">{ep_count} Episode{"s" if ep_count != 1 else ""}</div>
+        </div>
+    </div>
+    <hr class="pcl-divider"/>
+    """, unsafe_allow_html=True)
 
-    col_info, col_btn = st.columns([3.6, 1.0], gap="small")
+
+def _render_episode_row(ep: dict, idx: int):
+    """
+    Render 1 episode dưới dạng row: số thứ tự + tiêu đề + nút Start.
+    Khi user click Start → set selected_episode + navigate Episode Detail.
+    """
+    ep_id    = ep.get("id", "")
+    ep_title = ep.get("title", f"Episode {idx + 1}")
+
+    col_info, col_btn = st.columns([4.5, 1.0], gap="small")
 
     with col_info:
-        ep_html = (
-            f'<div class="pcl-episode-row">'
-            + thumb_html
-            + '<div class="pcl-ep-info">'
-            + f'<div class="pcl-ep-badge">B&#224;i {badge_num}</div>'
-            + f'<div class="pcl-ep-title">{ep_title}</div>'
-            + duration_html
-            + '</div></div>'
-        )
-        st.markdown(ep_html, unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="pcl-ep-item">
+            <div class="pcl-ep-num">{idx + 1}</div>
+            <div class="pcl-ep-title">{ep_title}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
     with col_btn:
-        st.markdown('<div class="pcl-start-btn-wrap">', unsafe_allow_html=True)
-        btn_key = f"pcl_ep_{ep_id}_{ep_idx}"
-        if st.button("▶ Start", key=btn_key, use_container_width=False):
-            logger.info(f"🎯 podcast_list_view: Chọn episode '{ep_title}' (id={ep_id})")
+        st.markdown('<div class="pcl-start-wrap">', unsafe_allow_html=True)
+        if st.button("▶ Start", key=f"pcl_ep_{ep_id}_{idx}", use_container_width=False):
+            logger.info(
+                f"🎯 podcast_list_view: User clicked Start ep[{idx}] "
+                f"'{ep_title}' (id={ep_id})"
+            )
             st.session_state["selected_episode"] = ep
             st.session_state["current_page"] = "Episode Detail"
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
 
+# =====================================================
+# PUBLIC ENTRY POINT
+# =====================================================
+
 def render_podcast_list_page(supabase_client=None):
     """
-    Màn hình chính: hiển thị danh sách episodes của show đã chọn.
+    Màn hình Episode List của show đã chọn.
+    Gọi từ app.py khi current_page == "Show Detail".
 
-    Điều kiện tiên quyết:
-        st.session_state["selected_show"] phải được set trước khi gọi hàm này
-        (được set bởi show_list_view khi user click vào một show card).
-
-    Args:
-        supabase_client: Supabase client từ config.py
-
-    Logs:
-        [INFO]  Khi function được gọi và hoàn thành
-        [DEBUG] Từng bước render: header, fetch, rows
-        [WARNING] Khi thiếu show_id hoặc dùng sample data
-        [ERROR]  Khi lỗi Supabase
+    FIX LỖI EPISODE LIST TRỐNG:
+    - Root cause: podcast_list_view không có → app.py route "Show Detail"
+      không render được danh sách episode vì thiếu View này.
+    - Fix: tạo View này và dùng get_episodes_by_show_id() từ tầng Model
+      để query episodes chính xác theo show_id từ session_state["selected_show"].
+    - selected_show["id"] được đảm bảo đầy đủ bởi _render_show_card_v4() đã fix.
     """
     logger.info("📋 podcast_list_view: render_podcast_list_page() — START.")
 
-    # Inject CSS tầng Style độc lập của màn hình này
-    inject_podcast_list_view_css()
+    # 0. CSS
+    _inject_podcast_list_css()
 
-    # ─────────────────────────────────────────────
-    # 0. LẤY THÔNG TIN SHOW ĐÃ CHỌN TỪ SESSION
-    # ─────────────────────────────────────────────
-    selected_show = st.session_state.get("selected_show", {})
-    if not selected_show:
-        logger.warning("⚠️ podcast_list_view: Không có selected_show trong session. Redirect về show list.")
-        st.warning("Không có show nào được chọn. Vui lòng quay lại thư viện.")
-        if st.button("← Your Library", key="pcl_back_no_show"):
+    # 1. Lấy show từ session state
+    show = st.session_state.get("selected_show")
+
+    if not show or not show.get("id"):
+        logger.warning("⚠️ podcast_list_view: selected_show rỗng hoặc thiếu id.")
+        st.warning("Không tìm thấy show. Vui lòng quay lại thư viện.")
+        st.markdown('<div class="pcl-back-wrap">', unsafe_allow_html=True)
+        if st.button("← Quay lại", key="pcl_back_no_show"):
             st.session_state["current_page"] = "Học tập"
             st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
         return
 
-    show_id = selected_show.get("id", "")
-    show_title = selected_show.get("title", "Untitled Show")
-    show_cover = selected_show.get("cover_image", None)
-    show_ep_count = selected_show.get("episode_count", 0)
+    show_id = str(show["id"])
+    logger.debug(f"📋 podcast_list_view: show_id={show_id}, title='{show.get('title')}'")
 
-    logger.debug(f"📺 podcast_list_view: show='{show_title}', id='{show_id}', cover={'yes' if show_cover else 'no'}")
-
-    # ─────────────────────────────────────────────
-    # 1. PAGE HEADER — Back button + Show info
-    # ─────────────────────────────────────────────
-
-    # Đã xoá đoạn HTML hiển thị text tĩnh để tránh trùng lặp chữ (Yêu cầu số 1)
-
-    # Đổi chữ hiển thị của Streamlit Button thành "← Your Library" (Yêu cầu số 2)
-    if st.button("← Your Library", key="pcl_back_btn", use_container_width=False):
-        logger.info("📌 podcast_list_view: User quay lại show list.")
+    # 2. Back button
+    st.markdown('<div class="pcl-back-wrap">', unsafe_allow_html=True)
+    if st.button("← Thư viện", key="pcl_back_btn"):
+        logger.info("⬅️ podcast_list_view: Back → Học tập.")
         st.session_state["current_page"] = "Học tập"
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # Page title + show subtitle
-    cover_html = (
-        f'<img src="{show_cover}" class="pcl-header-cover" alt="cover"/>'
-        if show_cover
-        else '<div class="pcl-header-cover-placeholder">📚</div>'
-    )
+    # 3. Show header
+    _render_header(show)
 
-    st.markdown(f"""
-    <div class="pcl-page-header">
-        <div class="pcl-header-icon-area">{cover_html}</div>
-        <div class="pcl-header-text">
-            <div class="pcl-page-title">📚 Danh sách bài học</div>
-            <div class="pcl-page-show-name">{show_title}</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    logger.debug("📝 podcast_list_view: Rendered page header.")
+    # 4. Query episodes từ Model
+    # FIX: Dùng get_episodes_by_show_id() — hàm tập trung ở tầng Model,
+    # query đúng cột, đúng filter, trả về list sạch.
+    # Trước đây: không có View này → show mới thêm không hiển thị episode.
+    episodes = get_episodes_by_show_id(supabase_client, show_id)
 
-    # ─────────────────────────────────────────────
-    # 2. SEARCH BAR + SORT DROPDOWN (UI only)
-    # ─────────────────────────────────────────────
-    col_search, col_sort = st.columns([3, 1])
-    with col_search:
-        search_query = st.text_input(
-            label="Tìm bài học",
-            placeholder="🔍  Tìm bài học...",
-            label_visibility="collapsed",
-            key="pcl_search_input"
-        )
-    with col_sort:
-        sort_option = st.selectbox(
-            label="Sắp xếp",
-            options=["Mới nhất", "Cũ nhất"],
-            label_visibility="collapsed",
-            key="pcl_sort_select"
-        )
-    logger.debug(f"🔍 podcast_list_view: search='{search_query}', sort='{sort_option}'")
+    # Cập nhật lại episode_count trong show nếu DB trả về số thực tế
+    if episodes:
+        actual_count = len(episodes)
+        if show.get("episode_count", 0) != actual_count:
+            show["episode_count"] = actual_count
+            st.session_state["selected_show"] = show
 
-    # ─────────────────────────────────────────────
-    # 3. FETCH EPISODES
-    # ─────────────────────────────────────────────
-    episodes = _fetch_episodes_from_db(supabase_client, show_id)
-    logger.debug(f"📦 podcast_list_view: Fetched {len(episodes)} episodes.")
+    logger.info(f"✅ podcast_list_view: {len(episodes)} episodes loaded cho show '{show.get('title')}'.")
 
-    # Apply search filter
-    if search_query and search_query.strip():
-        q = search_query.strip().lower()
-        episodes = [ep for ep in episodes if q in ep.get("title", "").lower()]
-        logger.debug(f"🔍 podcast_list_view: After filter '{q}': {len(episodes)} episodes.")
-
-    # Apply sort
-    if sort_option == "Cũ nhất":
-        episodes = list(reversed(episodes))
-        logger.debug("📊 podcast_list_view: Sorted ascending (oldest first).")
-
-    # ─────────────────────────────────────────────
-    # 4. EPISODE COUNT LABEL
-    # ─────────────────────────────────────────────
-    count_label = len(episodes)
-    st.markdown(f'<div class="pcl-count-label">{count_label} bài học</div>', unsafe_allow_html=True)
-    logger.debug(f"🔢 podcast_list_view: Hiển thị {count_label} episodes.")
-
-    # ─────────────────────────────────────────────
-    # 5. EPISODE LIST
-    # ─────────────────────────────────────────────
+    # 5. Render episode list
     if not episodes:
-        logger.info("ℹ️ podcast_list_view: Không có episode nào để hiển thị.")
         st.markdown("""
-        <div class="pcl-empty-state">
+        <div class="pcl-empty">
             <div class="pcl-empty-icon">🎧</div>
-            <div class="pcl-empty-title">Chưa có bài học</div>
-            <div class="pcl-empty-sub">Chưa có bài học nào trong show này.</div>
+            <div class="pcl-empty-title">Chưa có episode nào</div>
+            <div class="pcl-empty-sub">
+                Show này chưa có tập bài học.<br/>
+                Hãy thử scan lại từ Apple Podcast URL.
+            </div>
         </div>
         """, unsafe_allow_html=True)
     else:
-        logger.debug(f"📋 podcast_list_view: Rendering {len(episodes)} episode rows.")
+        logger.debug(f"🗂️ podcast_list_view: Rendering {len(episodes)} episode rows.")
         for idx, ep in enumerate(episodes):
-            _render_episode_row(ep, idx, show_cover)
-            logger.debug(f"✅ podcast_list_view: Episode [{idx}] rendered — '{ep.get('title', '')[:50]}'")
+            _render_episode_row(ep, idx)
 
     logger.info("✅ podcast_list_view: render_podcast_list_page() — DONE.")
