@@ -67,172 +67,10 @@ def _fetch_shows_from_db(supabase_client) -> list:
         return SAMPLE_SHOWS
 
 
-def _inject_card_button_css():
+def _render_show_card_v4(show: dict, card_idx: int):
     """
-    Inject CSS biến st.button thành show card hoàn chỉnh.
-    Kỹ thuật: Button có key dạng 'slcard_{id}_{idx}' — CSS nhắm
-    đúng vào button đó, style thành card đầy đủ (ảnh + text).
-    KHÔNG dùng overlay/invisible button — click thẳng vào card.
-    CHỈ GỌI MỘT LẦN trong render_podcast_discover_page().
-    """
-    logger.debug("🎨 show_list_view: Injecting show-card-as-button CSS.")
-    st.markdown("""
-    <style>
-        /* =====================================================
-           SHOW CARD BUTTON — v4 Clean (không overlay)
-           Mỗi button có key="slcard_{id}_{idx}" → Streamlit
-           sinh ra data-testid="stBaseButton-secondary" bên trong
-           một div container. Ta style button thành card hoàn chỉnh.
-
-           QUY TẮC: CHỈ THÊM MỚI — không sửa CSS cũ sl- / pl- / db-
-        ===================================================== */
-
-        /* Container wrapper của mỗi card button */
-        .sl-card-btn-wrap {
-            width: 100%;
-            margin-bottom: 12px;
-        }
-        .sl-card-btn-wrap .stButton,
-        .sl-card-btn-wrap [data-testid="stButton"] {
-            width: 100% !important;
-        }
-
-        /* Button styled thành card —
-           Dùng :has() để nhắm button trong .sl-card-btn-wrap */
-        .sl-card-btn-wrap .stButton > button,
-        .sl-card-btn-wrap [data-testid="stButton"] > button {
-            /* Reset Streamlit defaults */
-            all: unset !important;
-            /* Card layout */
-            display: flex !important;
-            align-items: center !important;
-            gap: 0 !important;
-            width: 100% !important;
-            min-height: 90px !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            /* Card visual */
-            background: rgba(255, 255, 255, 0.025) !important;
-            border: 1px solid rgba(255, 255, 255, 0.07) !important;
-            border-radius: 16px !important;
-            cursor: pointer !important;
-            overflow: hidden !important;
-            box-sizing: border-box !important;
-            text-align: left !important;
-            transition: background 0.18s ease, border-color 0.18s ease,
-                        box-shadow 0.18s ease !important;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
-            /* Đảm bảo nội dung HTML bên trong được render đúng */
-            white-space: normal !important;
-            line-height: normal !important;
-        }
-        .sl-card-btn-wrap .stButton > button:hover,
-        .sl-card-btn-wrap [data-testid="stButton"] > button:hover {
-            background: rgba(0, 242, 254, 0.05) !important;
-            border-color: rgba(0, 242, 254, 0.22) !important;
-            box-shadow: 0 0 22px rgba(0, 242, 254, 0.07) !important;
-        }
-        .sl-card-btn-wrap .stButton > button:active,
-        .sl-card-btn-wrap [data-testid="stButton"] > button:active {
-            background: rgba(0, 242, 254, 0.09) !important;
-            border-color: rgba(0, 242, 254, 0.35) !important;
-        }
-        .sl-card-btn-wrap .stButton > button:focus,
-        .sl-card-btn-wrap [data-testid="stButton"] > button:focus {
-            outline: none !important;
-            box-shadow: 0 0 0 2px rgba(0, 242, 254, 0.30) !important;
-        }
-
-        /* Nội dung bên trong button (p tag của Streamlit) */
-        .sl-card-btn-wrap .stButton > button p,
-        .sl-card-btn-wrap [data-testid="stButton"] > button p {
-            display: flex !important;
-            align-items: center !important;
-            gap: 0 !important;
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-        }
-
-        /* =====================================================
-           SIDEBAR BUTTON OVERRIDE — không bị ảnh hưởng bởi CSS trên
-           Đảm bảo sidebar nav buttons giữ nguyên opacity:0 / height:46px
-        ===================================================== */
-        [data-testid="stSidebar"] .stButton > button {
-            all: unset !important;
-            opacity: 0 !important;
-            display: block !important;
-            width: 100% !important;
-            height: 46px !important;
-            min-height: 0 !important;
-            cursor: pointer !important;
-        }
-        [data-testid="stSidebar"] .stButton {
-            margin-top: -46px !important;
-            height: 46px !important;
-            overflow: hidden !important;
-            z-index: 5 !important;
-        }
-
-    </style>
-    """, unsafe_allow_html=True)
-    logger.debug("✅ show_list_view: Card-as-button CSS injected.")
-
-
-def _build_card_html(show: dict) -> str:
-    """
-    Build HTML string cho nội dung bên trong button card.
-    Streamlit button nhận markdown, nên ta dùng unsafe_allow_html=False
-    nhưng dùng st.button với label là HTML thuần — Streamlit 1.30+ hỗ trợ
-    unsafe_allow_html trong button label qua markdown.
-
-    Thực tế: st.button label bị escape HTML → dùng placeholder text +
-    inject HTML riêng ra ngoài qua st.markdown (kỹ thuật dual render).
-
-    Giải pháp đúng: Dùng st.markdown cho visual card + st.button ẩn overlay.
-    Nhưng yêu cầu là KHÔNG dùng overlay. Vậy dùng streamlit-javascript hoặc
-    components.v1.html để bridge JS click → session_state.
-    KHÔNG khả thi trong 1 render cycle.
-
-    => Giải pháp THỰC DỤNG nhất: st.button với label có icon + title text
-       (không HTML), wrap trong .sl-card-btn-wrap, CSS style thành card đẹp.
-    """
-    cover = show.get("cover_image")
-    icon = show.get("icon", "🎙️")
-    title = show.get("title", "Untitled Show")
-    ep_count = show.get("episode_count", 0)
-    ep_label = f"{ep_count} Episode{'s' if ep_count != 1 else ''}"
-
-    if cover:
-        # Có ảnh thật — dùng emoji placeholder cho button label, ảnh hiện qua CSS background
-        thumb_part = f"[{icon}]"
-    else:
-        thumb_part = icon
-
-    # Label của button: icon + title + episode count
-    # Streamlit sẽ render đây là text trong <p> bên trong button
-    return thumb_part, title, ep_label
-
-
-def _render_show_card(show: dict, card_idx: int):
-    """
-    Render một show card theo mockup — v4 Card-HTML + Button hybrid.
-
-    Kỹ thuật mới (không overlay):
-    1. Render card HTML bằng st.markdown (visual đẹp)
-    2. Render st.button có label = tên show (text thuần), width=full
-    3. CSS kéo button lên đè card bằng negative margin-top
-       → button trong suốt (opacity:0) nhưng vùng click chính xác khớp card
-
-    ĐIỂM KHÁC BIỆT so với cách cũ:
-    - CSS mới dùng margin-top âm ĐÚNG chiều cao card (90px) thay vì 54px/58px
-    - overflow:hidden trên .stButton chặn vùng click tràn ra ngoài
-    - Không còn nút "▶ Open" hiện ra ở phía dưới
-
-    Log levels:
-        DEBUG: Mỗi card render
-        INFO:  Khi user click chọn show
-        WARNING: Khi thiếu cover image
+    Render show card v4 — col_info (HTML visual) + col_btn (pill button).
+    UI giữ nguyên 100%.
     """
     cover = show.get("cover_image")
     icon = show.get("icon", "🎙️")
@@ -241,52 +79,56 @@ def _render_show_card(show: dict, card_idx: int):
     ep_label = f"{ep_count} Episode{'s' if ep_count != 1 else ''}"
     show_id = show.get("id", f"show_{card_idx}")
 
-    logger.debug(f"🃏 show_list_view: Rendering card[{card_idx}] — '{title}', "
-                 f"cover={'yes' if cover else 'no'}, episodes={ep_count}")
+    logger.debug(
+        f"🃏 show_list_view: _render_show_card_v4[{card_idx}] — '{title}', "
+        f"cover={'yes' if cover else 'no'}, episodes={ep_count}"
+    )
 
-    if not cover:
-        logger.debug(f"🖼️ show_list_view: Card[{card_idx}] '{title}' — no cover image, using icon fallback.")
-
-    # --- BƯỚC 1: Render HTML card (visual) ---
     if cover:
         thumb_html = f'<img src="{cover}" class="sl-show-thumb" alt="{title}"/>'
     else:
         thumb_html = f'<div class="sl-show-thumb-placeholder">{icon}</div>'
 
-    card_html = f"""
-    <div class="sl-show-card" id="sl-card-{card_idx}">
-        {thumb_html}
-        <div class="sl-show-info">
-            <div class="sl-show-title">{title}</div>
-            <div class="sl-show-episodes">{ep_label}</div>
-        </div>
-        <div class="sl-show-more-btn" title="More options">⋯</div>
-    </div>
-    """
-    st.markdown(card_html, unsafe_allow_html=True)
-    logger.debug(f"📄 show_list_view: Card[{card_idx}] HTML rendered.")
+    col_info, col_btn = st.columns([3.2, 1.0], gap="small")
 
-    # --- BƯỚC 2: Render st.button ẩn đè lên card ---
-    # Button trong suốt (opacity:0), negative margin-top kéo lên khớp card
-    # CSS target: [data-testid="stSidebar"] được loại trừ để không ảnh hưởng sidebar
-    btn_key = f"slcard_{show_id}_{card_idx}"
-    if st.button(
-        label=f"open_show_{card_idx}",   # label text ngắn, sẽ bị ẩn bởi opacity:0
-        key=btn_key,
-        use_container_width=True,
-        help=f"Mở show: {title}"
-    ):
-        logger.info(f"🎯 show_list_view: User clicked show card[{card_idx}] — '{title}' (id={show_id})")
-        st.session_state["selected_show"] = show
-        st.session_state["current_page"] = "Show Detail"
-        logger.debug(f"📌 show_list_view: session_state updated → selected_show='{title}', page='Show Detail'")
-        st.rerun()
+    with col_info:
+        st.markdown(f"""
+        <div class="sl-show-card">
+            {thumb_html}
+            <div class="sl-show-info">
+                <div class="sl-show-title">{title}</div>
+                <div class="sl-show-episodes">{ep_label}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_btn:
+        st.markdown('<div class="sl-open-btn-wrap">', unsafe_allow_html=True)
+        if st.button("▶ Open", key=f"slv4_{show_id}_{card_idx}", use_container_width=False):
+            logger.info(f"🎯 show_list_view: User clicked Open card[{card_idx}] — '{title}' (id={show_id})")
+            st.session_state["selected_show"] = show
+            st.session_state["current_page"] = "Show Detail"
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
 def _render_add_show_section(supabase_client):
     """
     Phần thêm show mới qua Apple Podcast URL.
-    Logic scraper/DB giữ nguyên từ bản cũ — chỉ thay đổi UI.
+
+    Luồng 3 bước:
+      Bước 1 — Scraper : gọi get_episode_list_from_show() thu thập RSS data
+      Bước 2 — DB Sync : lưu show + episodes vào Supabase để cache về sau
+      Bước 3 — Rerun   : st.rerun() reload page, grid render lại từ DB sạch
+
+    MAPPING FIELD (scraper → DB schema episodes):
+      scraper["apple_url"]  → episodes.audio_url   (URL trực tiếp tới file audio)
+      scraper["title"]      → episodes.title
+      scraper["image"]      → KHÔNG có cột tương ứng trong DB → bỏ qua
+      Duplicate check       → dùng (show_id, title) vì không có cột apple_url trong episodes
+
+    DB schema episodes (từ dbStructure):
+      id, show_id, title, audio_url, transcript, quiz_json, created_at
     """
     logger.debug("🔧 show_list_view: Rendering Add Show expander.")
     with st.expander("➕  Add New Show  —  Paste Apple Podcast URL", expanded=False):
@@ -305,174 +147,154 @@ def _render_add_show_section(supabase_client):
             if not input_url or not input_url.strip():
                 logger.warning("⚠️ show_list_view: Scan clicked nhưng URL rỗng.")
                 st.warning("Vui lòng dán link Apple Podcast trước khi quét.")
-            else:
-                logger.info(f"🔍 show_list_view: Bắt đầu scrape: {input_url}")
-                with st.spinner("AI đang quét dữ liệu bài học..."):
-                    try:
-                        from modules.scraper import get_episode_list_from_show
-                        show_data = get_episode_list_from_show(input_url)
-                        if show_data:
-                            ep_count = len(show_data.get("episodes", []))
-                            logger.info(f"✅ show_list_view: Scrape OK — {ep_count} episodes.")
-                            st.success(f"✅ Đồng bộ thành công! Tìm thấy {ep_count} episodes.")
-                            st.rerun()
-                        else:
-                            logger.warning("⚠️ show_list_view: Scraper trả về rỗng/None.")
-                            st.error("Không tìm thấy dữ liệu — kiểm tra lại URL.")
-                    except Exception as scrape_err:
-                        logger.error(f"🚨 show_list_view: Scraper lỗi: {scrape_err}")
-                        st.error(f"Lỗi khi quét: {scrape_err}")
+                return
 
+            logger.info(f"🔍 show_list_view: Bắt đầu scrape: {input_url}")
+            with st.spinner("AI đang quét dữ liệu bài học..."):
 
-def _render_show_card_v4(show: dict, card_idx: int):
-    """
-    Render show card v4 — Dùng st.columns() chia hàng thành 2 cột:
-      - Cột trái (col_info): HTML card visual (thumbnail + title + episodes)
-      - Cột phải (col_btn):  st.button() thật, styled thành pill cyan
+                # ── BƯỚC 1: Scraper — thu thập dữ liệu từ Apple RSS ──
+                try:
+                    from modules.scraper import get_episode_list_from_show
+                    show_data = get_episode_list_from_show(input_url.strip())
+                except Exception as scrape_err:
+                    logger.error(f"🚨 show_list_view: Scraper exception: {scrape_err}")
+                    st.error(f"Lỗi khi quét: {scrape_err}")
+                    return
 
-    Giống pattern Recent Shows trong dashboard_view.py — không dùng
-    overlay button ẩn, không có CSS absolute/opacity hack.
-    CSS sl-v4- bên trong inject_show_list_card_button_css() được cập nhật
-    tương ứng để style col_btn thành pill giống .db-learn-btn-wrap.
+                if not show_data:
+                    logger.warning("⚠️ show_list_view: Scraper trả về rỗng/None.")
+                    st.error("Không tìm thấy dữ liệu — kiểm tra lại URL.")
+                    return
 
-    Log levels:
-        DEBUG: render từng bước
-        INFO:  user click
-        WARNING: thiếu cover image
-    """
-    cover = show.get("cover_image")
-    icon = show.get("icon", "🎙️")
-    title = show.get("title", "Untitled Show")
-    ep_count = show.get("episode_count", 0)
-    ep_label = f"{ep_count} Episode{'s' if ep_count != 1 else ''}"
-    show_id = show.get("id", f"show_{card_idx}")
+                episodes_raw = show_data.get("episodes", [])
+                ep_total = len(episodes_raw)
+                logger.info(
+                    f"✅ show_list_view: Scrape OK — "
+                    f"'{show_data.get('show_title')}', {ep_total} episodes."
+                )
 
-    logger.debug(
-        f"🃏 show_list_view: _render_show_card_v4[{card_idx}] — '{title}', "
-        f"cover={'yes' if cover else 'no'}, episodes={ep_count}"
-    )
+                # ── BƯỚC 2: DB Sync ──
+                if not supabase_client:
+                    logger.warning("show_list_view: supabase_client=None, bỏ qua DB sync.")
+                    st.info(
+                        f"Đã quét được \"{show_data['show_title']}\" ({ep_total} tập) "
+                        "nhưng không thể lưu do chưa kết nối DB."
+                    )
+                    st.rerun()
+                    return
 
-    if not cover:
-        logger.debug(f"🖼️ show_list_view: Card[{card_idx}] '{title}' — no cover, using icon '{icon}'")
+                try:
+                    import uuid
 
-    # Build thumbnail HTML
-    if cover:
-        thumb_html = f'<img src="{cover}" class="sl-show-thumb" alt="{title}"/>'
-    else:
-        thumb_html = f'<div class="sl-show-thumb-placeholder">{icon}</div>'
+                    # 2a. Upsert Show — check trùng theo apple_show_url
+                    existing_show = supabase_client.table("shows").select("id").eq(
+                        "apple_show_url", input_url.strip()
+                    ).execute()
 
-    # ─────────────────────────────────────────────
-    # Layout: [info HTML  |  Open button]
-    # Tỉ lệ cột khớp chiều rộng nội dung — btn đủ
-    # chỗ cho chữ "▶ Open" mà không bị wrap.
-    # ─────────────────────────────────────────────
-    col_info, col_btn = st.columns([3.2, 1.0], gap="small")
+                    if existing_show.data:
+                        show_id = existing_show.data[0]["id"]
+                        logger.info(f"show_list_view: Show đã tồn tại, reuse id={show_id}")
+                    else:
+                        show_id = str(uuid.uuid4())
+                        supabase_client.table("shows").insert({
+                            "id": show_id,
+                            "title": show_data["show_title"],
+                            "cover_image": show_data.get("show_image"),
+                            "apple_show_url": input_url.strip()
+                        }).execute()
+                        logger.info(
+                            f"show_list_view: Inserted new show "
+                            f"id={show_id}, title='{show_data['show_title']}'"
+                        )
 
-    with col_info:
-        st.markdown(f"""
-        <div class="sl-show-card">
-            {thumb_html}
-            <div class="sl-show-info">
-                <div class="sl-show-title">{title}</div>
-                <div class="sl-show-episodes">{ep_label}</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        logger.debug(f"📄 show_list_view: Card[{card_idx}] HTML info rendered.")
+                    # 2b. Insert Episodes — chỉ insert tập chưa tồn tại
+                    # Check duplicate bằng (show_id + title) vì DB không có cột apple_url.
+                    # audio_url lưu episode_url từ scraper (link trực tiếp tới file audio/RSS).
+                    existing_ep_res = supabase_client.table("episodes").select(
+                        "title"
+                    ).eq("show_id", show_id).execute()
+                    existing_titles = {
+                        row["title"] for row in (existing_ep_res.data or [])
+                    }
+                    logger.debug(
+                        f"show_list_view: {len(existing_titles)} episodes đã có trong DB cho show này."
+                    )
 
-    with col_btn:
-        # Bọc trong div để CSS pill được apply đúng
-        st.markdown('<div class="sl-open-btn-wrap">', unsafe_allow_html=True)
-        btn_key = f"slv4_{show_id}_{card_idx}"
-        if st.button("▶ Open", key=btn_key, use_container_width=False):
-            logger.info(
-                f"🎯 show_list_view: User clicked Open card[{card_idx}] — "
-                f"'{title}' (id={show_id})"
-            )
-            st.session_state["selected_show"] = show
-            st.session_state["current_page"] = "Show Detail"
-            logger.debug(
-                f"📌 show_list_view: session_state → "
-                f"selected_show='{title}', current_page='Show Detail'"
-            )
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+                    inserted = 0
+                    skipped = 0
+                    for ep in episodes_raw:
+                        ep_title = ep.get("title", "").strip()
+                        if ep_title in existing_titles:
+                            skipped += 1
+                            continue
+                        supabase_client.table("episodes").insert({
+                            "id": str(uuid.uuid4()),
+                            "show_id": show_id,
+                            "title": ep_title,
+                            # audio_url lưu URL thô từ RSS enclosure/link
+                            # (sẽ được resolve thành direct audio khi user mở episode)
+                            "audio_url": ep.get("apple_url", ""),
+                        }).execute()
+                        inserted += 1
 
-    logger.debug(f"✅ show_list_view: Card[{card_idx}] columns rendered.")
+                    logger.info(
+                        f"show_list_view: Sync done — "
+                        f"{inserted} inserted, {skipped} skipped / {ep_total} total."
+                    )
+                    st.success(
+                        f"✅ Đã thêm \"{show_data['show_title']}\" "
+                        f"({inserted} tập mới) vào thư viện!"
+                    )
+
+                except Exception as db_err:
+                    logger.error(f"🚨 show_list_view: DB sync error: {db_err}")
+                    st.warning(f"Lấy dữ liệu thành công nhưng lưu DB gặp sự cố: {db_err}")
+
+                # ── BƯỚC 3: Reload page — grid tự render lại từ DB ──
+                st.rerun()
 
 
 def render_podcast_discover_page(supabase_client=None):
     """
     Màn hình 'Your Podcast Library' — render khi sidebar Discover được click.
-    - Layout: page header + search bar + add-show expander + grid 2 cột.
-    - Logic DB, scraper, điều hướng KHÔNG thay đổi so với bản gốc.
-    - Tham số supabase_client khớp với cách gọi từ app.py:
+    Tham số supabase_client khớp với cách gọi từ app.py:
         render_podcast_discover_page(supabase_client=supabase)
-
-    Fix v4 — Card Click Navigation:
-    - Bỏ nút "▶ Open {title}" hiển thị dưới card
-    - Dùng st.button ẩn (opacity:0) đè lên card HTML bằng CSS negative margin-top
-    - CSS .sl-show-card-btn target đúng chiều cao card (90px) → click chính xác
-    - overflow:hidden trên .stButton chặn vùng click tràn lên/xuống
-
-    Logs:
-        [INFO]  Khi function được gọi và hoàn thành
-        [DEBUG] Từng bước render: header, fetch, grid, từng card
-        [WARNING] Khi dùng sample data hoặc URL rỗng
-        [ERROR]  Khi lỗi Supabase / Scraper
     """
     logger.info("📻 show_list_view: render_podcast_discover_page() — START.")
 
-    # ─────────────────────────────────────────────
-    # 0. INJECT CSS CHO CARD BUTTON (gọi một lần đầu)
-    #    Delegate sang show_list_css.py — tách biệt hoàn toàn
-    # ─────────────────────────────────────────────
+    # 0. Inject CSS
     inject_show_list_card_button_css()
 
-    # ─────────────────────────────────────────────
-    # 1. PAGE HEADER
-    # ─────────────────────────────────────────────
+    # 1. Page header
     st.markdown("""
     <div class="sl-page-header">
         <div class="sl-page-title">Your Podcast Library</div>
         <div class="sl-page-sub">All the shows you've saved in one place.</div>
     </div>
     """, unsafe_allow_html=True)
-    logger.debug("📝 show_list_view: Rendered page header.")
 
-    # ─────────────────────────────────────────────
-    # 2. SEARCH BAR
-    # ─────────────────────────────────────────────
+    # 2. Search bar
     search_query = st.text_input(
         label="Search shows",
         placeholder="🔍  Search shows...",
         label_visibility="collapsed",
         key="sl_search_input"
     )
-    logger.debug(f"🔍 show_list_view: search_query='{search_query}'")
 
-    # ─────────────────────────────────────────────
-    # 3. ADD SHOW SECTION
-    # ─────────────────────────────────────────────
+    # 3. Add show section
     _render_add_show_section(supabase_client)
 
-    # ─────────────────────────────────────────────
-    # 4. FETCH DATA
-    # ─────────────────────────────────────────────
+    # 4. Fetch data từ DB
     shows = _fetch_shows_from_db(supabase_client)
     logger.debug(f"📦 show_list_view: Total shows loaded: {len(shows)}")
 
-    # Filter theo search
+    # 5. Filter theo search
     if search_query and search_query.strip():
         q = search_query.strip().lower()
         shows = [s for s in shows if q in s.get("title", "").lower()]
-        logger.debug(f"🔍 show_list_view: After filter '{q}': {len(shows)} shows remain.")
 
-    # ─────────────────────────────────────────────
-    # 5. RENDER GRID 2 CỘT
-    # ─────────────────────────────────────────────
+    # 6. Render grid 2 cột
     if not shows:
-        logger.info("ℹ️ show_list_view: Empty state — không có show để hiển thị.")
         st.markdown("""
         <div class="sl-empty-state">
             <div class="sl-empty-icon">🎧</div>
@@ -482,17 +304,12 @@ def render_podcast_discover_page(supabase_client=None):
         """, unsafe_allow_html=True)
     else:
         logger.debug(f"🗂️ show_list_view: Rendering {len(shows)} shows in 2-col grid.")
-        # Render từng hàng: 2 card/hàng
         for row_idx in range(0, len(shows), 2):
             col_left, col_right = st.columns(2, gap="medium")
-
             with col_left:
                 _render_show_card_v4(shows[row_idx], row_idx)
-                logger.debug(f"✅ show_list_view: Card [{row_idx}] rendered — '{shows[row_idx]['title']}'")
-
             if row_idx + 1 < len(shows):
                 with col_right:
                     _render_show_card_v4(shows[row_idx + 1], row_idx + 1)
-                    logger.debug(f"✅ show_list_view: Card [{row_idx+1}] rendered — '{shows[row_idx+1]['title']}'")
 
     logger.info("✅ show_list_view: render_podcast_discover_page() — DONE.")
