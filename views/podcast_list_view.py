@@ -232,7 +232,7 @@ def _render_episode_row(ep: dict, idx: int):
 
     with col_btn:
         st.markdown('<div class="pcl-start-wrap">', unsafe_allow_html=True)
-        if st.button("▶ Start", key=f"pcl_ep_{ep_id}_{idx}", use_container_width=False):
+        if st.button("⚡Learn", key=f"pcl_ep_{ep_id}_{idx}", use_container_width=False):
             logger.info(
                 f"🎯 podcast_list_view: User clicked Start ep[{idx}] "
                 f"'{ep_title}' (id={ep_id})"
@@ -282,7 +282,7 @@ def render_podcast_list_page(supabase_client=None):
 
     # 2. Back button
     st.markdown('<div class="pcl-back-wrap">', unsafe_allow_html=True)
-    if st.button("← Thư viện", key="pcl_back_btn"):
+    if st.button("← Your Library", key="pcl_back_btn"):
         logger.info("⬅️ podcast_list_view: Back → Học tập.")
         st.session_state["current_page"] = "Học tập"
         st.rerun()
@@ -311,10 +311,12 @@ def render_podcast_list_page(supabase_client=None):
         st.markdown("""
         <div class="pcl-empty">
             <div class="pcl-empty-icon">🎧</div>
-            <div class="pcl-empty-title">Chưa có episode nào</div>
+            <div class="pcl-empty-title">No episode.</div>
             <div class="pcl-empty-sub">
-                Show này chưa có tập bài học.<br/>
-                Hãy thử scan lại từ Apple Podcast URL.
+                This show does not have any lesson episodes.<br/>
+                Please try scanning again from the Show screen ▶ Add New Show.
+                
+
             </div>
         </div>
         """, unsafe_allow_html=True)

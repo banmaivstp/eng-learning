@@ -172,7 +172,7 @@ def inject_show_list_css():
         }
         .sl-empty-sub {
             font-size: 14px;
-            color: #475569 !important;
+            color: #FCD34D !important;
             line-height: 1.5;
         }
 

@@ -1,0 +1,14 @@
+Dưới đây là một số mã màu Hex tone sáng và neon rất hợp với giao diện Dark UI (nền tối) hiện tại của bạn.
+1. Nhóm màu hài hòa, dễ đọc (Khuyên dùng cho text thường)
+#94A3B8 (Xám xanh sáng - cùng tone với tiêu đề "No show")
+
+#E2E8F0 (Trắng sữa - nổi bật, cực kỳ rõ ràng)
+
+#CBD5E1 (Trắng xám - dịu mắt, không bị chói)
+
+2. Nhóm màu Neon (Nếu muốn dòng chữ này thực sự nổi bật)
+#38BDF8 (Xanh Sky thanh lịch)
+
+#FCD34D (Vàng ấm áp, tạo cảm giác thân thiện khi hướng dẫn user)
+
+#34D399 (Xanh lá Mint mint mẻ)
