@@ -275,7 +275,7 @@ def inject_quiz_detail_css():
 
     /* Fix iframe player height — tránh bị cắt nội dung */
     iframe[title="streamlit_component"] {
-        min-height: 142px !important;
+        min-height: 150px !important;
     }
 
     /* Radio / option buttons: căn trái, không uppercase */

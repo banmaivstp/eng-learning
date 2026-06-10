@@ -235,6 +235,46 @@ def get_episode_count_by_show_id(supabase_client, show_id: str) -> int:
         return 0
 
 
+def get_show_by_episode_id(supabase_client, episode_id: str) -> dict:
+    """
+    Lấy thông tin show (id, title, cover_image) dựa vào episode_id.
+
+    LÝ DO THÊM HÀM NÀY:
+    - quiz_detail_view cần hiển thị logo + tên show trong audio player,
+      nhưng selected_show từ session_state có thể thiếu cover_image hoặc title
+      (tuỳ vào podcast_list_view set key gì khi navigate).
+    - Tập trung toàn bộ logic DB vào tầng Model — View không query trực tiếp.
+    - Thực hiện JOIN 1 bước: episodes → shows, tránh 2 lần query riêng.
+
+    Returns:
+        dict {"id", "title", "cover_image"} hoặc {} nếu lỗi / không tìm thấy.
+    """
+    client = supabase_client or supabase
+    if not client or not episode_id:
+        logger.warning("get_show_by_episode_id: thiếu client hoặc episode_id.")
+        return {}
+
+    try:
+        res = (
+            client.table("episodes")
+            .select("show_id, shows(id, title, cover_image)")
+            .eq("id", str(episode_id))
+            .execute()
+        )
+
+        if not res.data:
+            logger.warning(f"get_show_by_episode_id: không tìm thấy episode {episode_id}")
+            return {}
+
+        show_data = res.data[0].get("shows") or {}
+        logger.info(f"✅ get_show_by_episode_id: title='{show_data.get('title')}', cover={'✓' if show_data.get('cover_image') else '✗'}")
+        return show_data
+
+    except Exception as e:
+        logger.exception(f"get_show_by_episode_id error: {e}")
+        return {}
+
+
 # =====================================================
 # ANALYTICS ENGINE LAYER (DASHBOARD METRICS)
 # =====================================================

@@ -16,6 +16,21 @@ Logic Cache:
     - Nếu episode đã có transcript + quiz_json trong DB → load ngay, không gọi AI
     - Nếu chưa có → chạy Whisper STT + Llama 3.1 Quiz Gen → lưu DB
 
+FIX v20260610 — Audio bị reset sau mỗi st.rerun():
+    ROOT CAUSE: Streamlit re-renders toàn bộ page mỗi khi bất kỳ widget nào thay đổi
+    (click đáp án quiz, toggle transcript, v.v.) → components.html() bị gọi lại →
+    iframe bị destroy và tạo mới → audio element mất trạng thái đang play.
+    Caching player_html string vào session_state KHÔNG đủ vì Streamlit vẫn re-create
+    iframe theo vị trí DOM khi full rerun xảy ra.
+
+    FIX THỰC SỰ — dùng @st.fragment:
+        Wrap toàn bộ transcript + quiz vào @st.fragment decorator.
+        Fragment re-run chỉ re-render phần bên trong fragment, KHÔNG đụng đến
+        audio player bên ngoài → components.html() của player KHÔNG bị gọi lại
+        → iframe tồn tại liên tục → audio tiếp tục phát không bị gián đoạn.
+        Audio player nằm ngoài fragment → không bao giờ bị re-render khi user
+        tương tác với quiz hay transcript.
+
 Quy tắc code:
     - KHÔNG thay đổi logic DB/AI/scraper — chỉ thay đổi UI
     - CSS được inject qua views/quiz_detail_css.py (inject_quiz_detail_css) — KHÔNG thêm CSS inline lớn
@@ -144,24 +159,87 @@ def _parse_quiz_data(quiz_json) -> list:
 
 
 # =====================================================
-# HELPER: FETCH & PROCESS EPISODE
+# HELPER: FETCH SHOW INFO (đảm bảo luôn có cover + title)
 # =====================================================
+
+def _load_show_info(episode: dict, supabase_client) -> dict:
+    """
+    Đảm bảo selected_show trong session_state có đủ title + cover_image.
+
+    Vấn đề gốc: podcast_list_view có thể set selected_show với keys khác nhau
+    hoặc thiếu cover_image. Hàm này uỷ thác toàn bộ DB query cho tầng Model
+    (modules/database.py :: get_show_by_episode_id), đúng kiến trúc Layered.
+
+    Không thay đổi selected_show nếu đã có đủ title + cover_image.
+    """
+    current_show = st.session_state.get("selected_show") or {}
+
+    has_title = bool(current_show.get("title") or current_show.get("show_title"))
+    has_cover = bool(
+        current_show.get("cover_image") or current_show.get("cover")
+        or current_show.get("image") or current_show.get("show_image")
+    )
+    if has_title and has_cover:
+        return current_show
+
+    episode_id = episode.get("id", "")
+    if not episode_id:
+        return current_show
+
+    # Cache theo episode_id để không query lại mỗi rerun
+    cache_key = f"qd_show_info_{episode_id}"
+    if st.session_state.get(cache_key):
+        return st.session_state[cache_key]
+
+    # Uỷ thác hoàn toàn cho tầng Model — không query DB trực tiếp ở đây
+    from modules.database import get_show_by_episode_id
+    show_from_db = get_show_by_episode_id(supabase_client, episode_id)
+
+    if show_from_db:
+        enriched = {**current_show, **show_from_db}  # DB data thắng nếu trùng key
+
+        # Xóa player cache cũ nếu lần này mới có cover (tránh player build thiếu logo)
+        old_has_cover = has_cover
+        new_has_cover = bool(show_from_db.get("cover_image"))
+        if not old_has_cover and new_has_cover:
+            st.session_state.pop(f"qd_player_html_{episode_id}", None)
+            logger.info("🧹 quiz_detail_view: Cleared stale player cache — sẽ rebuild với cover mới")
+
+        st.session_state[cache_key] = enriched
+        st.session_state["selected_show"] = enriched
+        return enriched
+
+    return current_show
+
+
+
 
 def _load_episode_data(episode: dict, supabase_client) -> tuple:
     """
     Tải dữ liệu episode: ưu tiên cache DB, nếu chưa có thì gọi AI.
+
+    FIX v20260610: audio_url được cache riêng vào session state theo episode_id
+    để đảm bảo player_html không thay đổi giữa các lần rerun.
     """
     episode_id = episode.get("id", "")
     audio_url = episode.get("audio_url", "")
     transcript_raw = episode.get("transcript", "")
     quiz_json = episode.get("quiz_json", None)
 
+    # Lấy audio_url đã resolve từ session cache (tránh fetch lại gây thay đổi player_html)
+    session_audio_key = f"qd_audio_url_{episode_id}"
+    if episode_id and st.session_state.get(session_audio_key):
+        audio_url = st.session_state[session_audio_key]
+        logger.debug(f"🔊 quiz_detail_view: audio_url từ session cache (episode={episode_id})")
+
     if supabase_client and episode_id and (not transcript_raw or not quiz_json):
         try:
             from modules.database import get_cached_episode_data
             cached = get_cached_episode_data(episode_id)
             if cached:
-                audio_url = cached.get("audio_url", audio_url)
+                # Chỉ ghi đè audio_url từ DB nếu session chưa cache (tránh làm bẩn cache)
+                if not st.session_state.get(session_audio_key):
+                    audio_url = cached.get("audio_url", audio_url)
                 transcript_raw = cached.get("transcript", transcript_raw)
                 quiz_json = cached.get("quiz_json", quiz_json)
         except Exception as e:
@@ -174,6 +252,11 @@ def _load_episode_data(episode: dict, supabase_client) -> tuple:
             episode_id=episode_id,
             supabase_client=supabase_client
         )
+
+    # Lưu audio_url đã resolve vào session để các lần rerun sau dùng lại — không fetch lại
+    if episode_id and audio_url and not st.session_state.get(session_audio_key):
+        st.session_state[session_audio_key] = audio_url
+        logger.debug(f"💾 quiz_detail_view: Đã cache audio_url vào session (episode={episode_id})")
 
     sentences = _parse_transcript_to_sentences(transcript_raw)
     quiz_data = _parse_quiz_data(quiz_json)
@@ -241,16 +324,27 @@ def _run_ai_pipeline(episode: dict, audio_url: str, episode_id: str, supabase_cl
 
 
 # =====================================================
-# RENDER: AUDIO PLAYER (HTML5 Custom) - Đã tối ưu gọn gàng hơn
+# HELPER: BUILD PLAYER HTML (tách riêng để dễ cache)
 # =====================================================
 
-def _render_audio_player(audio_url: str, episode: dict, show: dict):
+def _build_player_html(audio_url: str, episode: dict, show: dict) -> str:
     """
-    Render custom HTML5 audio player siêu gọn để tiết kiệm không gian màn hình laptop.
+    Tạo chuỗi HTML cho custom audio player.
+    Layout: [Cover 44px] [Show name nhỏ / Episode title đậm] [Speed btn]
+    Match design mẫu: logo vuông bên trái, show name nhỏ xám, ep title trắng đậm.
+
+    Đọc cover_image từ cả hai key 'cover_image' và 'cover' để tương thích
+    với các nơi khác nhau có thể set session_state["selected_show"].
     """
-    show_title = show.get("title", "Podcast")
-    ep_title = episode.get("title", "Episode")
-    show_cover = show.get("cover_image", None)
+    show_title = show.get("title", "") or show.get("show_title", "") or "Podcast"
+    ep_title = episode.get("title", "") or "Episode"
+    show_cover = (
+        show.get("cover_image")
+        or show.get("cover")
+        or show.get("image")
+        or show.get("show_image")
+        or None
+    )
 
     cover_html = (
         f'<img src="{show_cover}" class="qd-player-cover" alt="cover"/>'
@@ -258,15 +352,18 @@ def _render_audio_player(audio_url: str, episode: dict, show: dict):
         else '<div class="qd-player-cover-placeholder">🎧</div>'
     )
 
-    if len(ep_title) > 55:
-        ep_title_short = ep_title[:52] + "..."
+    if len(ep_title) > 60:
+        ep_title_short = ep_title[:57] + "..."
     else:
         ep_title_short = ep_title
 
+    # Escape HTML entities trong title để tránh XSS / render lỗi
+    import html as _html
+    show_title_safe = _html.escape(show_title)
+    ep_title_safe = _html.escape(ep_title_short)
     safe_audio_url = audio_url.replace('"', '&quot;') if audio_url else ""
 
-    player_html = f"""
-<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -283,12 +380,12 @@ def _render_audio_player(audio_url: str, episode: dict, show: dict):
     position: relative;
     overflow: hidden;
   }}
-  .qd-top-row {{ display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }}
-  .qd-player-cover {{ width: 34px; height: 34px; border-radius: 6px; object-fit: cover; border: 1px solid rgba(255,255,255,0.1); flex-shrink: 0; }}
-  .qd-player-cover-placeholder {{ width: 34px; height: 34px; border-radius: 6px; background: rgba(0,242,254,0.1); border: 1px solid rgba(0,242,254,0.15); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }}
-  .qd-info-block {{ flex: 1; overflow: hidden; }}
-  .qd-show-name {{ font-size: 10px; font-weight: 600; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 1px; }}
-  .qd-ep-title {{ font-size: 12px; font-weight: 700; color: #F1F5F9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }}
+  .qd-top-row {{ display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }}
+  .qd-player-cover {{ width: 44px; height: 44px; border-radius: 8px; object-fit: cover; border: 1px solid rgba(255,255,255,0.12); flex-shrink: 0; }}
+  .qd-player-cover-placeholder {{ width: 44px; height: 44px; border-radius: 8px; background: rgba(0,242,254,0.1); border: 1px solid rgba(0,242,254,0.15); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }}
+  .qd-info-block {{ flex: 1; overflow: hidden; display: flex; flex-direction: column; justify-content: center; gap: 2px; }}
+  .qd-show-name {{ font-size: 11px; font-weight: 600; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.01em; }}
+  .qd-ep-title {{ font-size: 13px; font-weight: 700; color: #F1F5F9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }}
   .qd-speed-btn {{ flex-shrink: 0; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 2px 7px; font-size: 11px; font-weight: 700; color: #94A3B8; cursor: pointer; }}
   .qd-speed-btn:hover {{ background: rgba(0,242,254,0.1); color: #00F2FE; }}
 
@@ -322,8 +419,8 @@ def _render_audio_player(audio_url: str, episode: dict, show: dict):
   <div class="qd-top-row">
     {cover_html}
     <div class="qd-info-block">
-      <div class="qd-show-name">{show_title}</div>
-      <div class="qd-ep-title">{ep_title_short}</div>
+      <div class="qd-show-name">{show_title_safe}</div>
+      <div class="qd-ep-title">{ep_title_safe}</div>
     </div>
     <button class="qd-speed-btn" onclick="cycleSpeed()" id="speedBtn">1.0x</button>
   </div>
@@ -419,20 +516,97 @@ function cycleSpeed() {{
 }}
 </script>
 </body>
-</html>
-"""
+</html>"""
+
+
+# =====================================================
+# RENDER: AUDIO PLAYER (HTML5 Custom)
+# =====================================================
+
+@st.fragment
+def _render_audio_player(audio_url: str, episode: dict, show: dict):
+    """
+    Render custom HTML5 audio player — bọc trong @st.fragment riêng.
+
+    FIX v20260610 (revised):
+        Vấn đề với approach trước: player nằm ngoài fragment quiz/transcript nhưng
+        vẫn trong cùng hàm render_quiz_detail_page(). Khi fragment quiz re-run,
+        Streamlit thực thi lại toàn bộ hàm cha → player vẫn bị render lại → iframe
+        bị destroy → audio mất.
+
+        Giải pháp đúng: bọc CHÍNH player vào @st.fragment riêng của nó.
+        Fragment player chỉ execute lại nội dung khi được trigger từ chính nó.
+        Fragment quiz/transcript re-run độc lập, không đụng đến fragment player.
+        → Hai fragment hoàn toàn tách biệt → iframe player tồn tại liên tục.
+
+        Fix deprecated API: dùng st.iframe thay vì st.components.v1.html
+        (components.html bị remove sau 2026-06-01).
+
+    NOTE: @st.fragment freeze args từ lần gọi đầu tiên — do đó show/episode
+        được đọc lại từ session_state bên trong fragment để đảm bảo luôn có
+        đủ cover_image, title dù args bị freeze.
+    """
+    # Đọc lại từ session_state để tránh frozen args của @st.fragment
+    _episode = st.session_state.get("selected_episode") or episode or {}
+    _show = st.session_state.get("selected_show") or show or {}
+    _audio_url = (
+        st.session_state.get(f"qd_audio_url_{_episode.get('id', '')}")
+        or audio_url
+        or _episode.get("audio_url", "")
+    )
+
+    episode_id = _episode.get("id", "unknown")
+    cache_key = f"qd_player_html_{episode_id}"
+
+    if cache_key not in st.session_state:
+        logger.debug(f"🎵 quiz_detail_view: Building player — show_title='{_show.get('title')}', cover={'✓' if (_show.get('cover_image') or _show.get('cover')) else '✗'}, audio={'✓' if _audio_url else '✗'}")
+        player_html = _build_player_html(audio_url=_audio_url, episode=_episode, show=_show)
+        st.session_state[cache_key] = player_html
+        logger.debug(f"🎵 quiz_detail_view: player_html built & cached (episode={episode_id})")
+    else:
+        player_html = st.session_state[cache_key]
+        logger.debug(f"🎵 quiz_detail_view: player_html loaded from cache (episode={episode_id})")
 
     try:
-        import streamlit.components.v1 as components
-        components.html(player_html, height=142, scrolling=False)  # Thu nhỏ chiều cao player xuống 142px
+        st.iframe(player_html, height=150, scrolling=False)
     except Exception as e:
         logger.error(f"🚨 quiz_detail_view: Lỗi render audio player: {e}")
-        if audio_url: st.audio(audio_url)
+        if _audio_url:
+            st.audio(_audio_url)
 
 
 # =====================================================
-# RENDER: TRANSCRIPT SECTION
+# FRAGMENT: TRANSCRIPT + QUIZ (tách biệt khỏi audio player)
 # =====================================================
+
+@st.fragment
+def _render_interactive_section(sentences: list, quiz_data: list, episode_id: str, user_id: str, supabase_client):
+    """
+    Fragment độc lập chứa Transcript + Quiz.
+
+    FIX v20260610 (revised) — Kiến trúc dual-fragment:
+        Fragment này (transcript + quiz) và _render_audio_player (player) là
+        HAI fragment độc lập. Khi user click đáp án hoặc toggle transcript,
+        chỉ fragment này re-run. Fragment player không bị trigger → iframe
+        audio không bị destroy → audio tiếp tục phát bình thường.
+
+    Lưu ý: st.rerun() bên trong fragment = fragment-scoped rerun (Streamlit ≥ 1.33).
+    """
+    # 2. Transcript Section
+    st.markdown('<div class="qd-transcript-section">', unsafe_allow_html=True)
+    _render_transcript_section(sentences)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # 3. Quiz Section
+    st.markdown('<div class="qd-quiz-section">', unsafe_allow_html=True)
+    _render_quiz_section(
+        quiz_data=quiz_data,
+        episode_id=episode_id,
+        user_id=user_id or "",
+        audio_start_time=0.0,
+        supabase_client=supabase_client
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
 
 def _render_transcript_section(sentences: list):
     """
@@ -468,7 +642,12 @@ def _render_transcript_section(sentences: list):
         timestamp_label = f"{minutes:02d}:{seconds:02d}"
 
         active_class = "qd-sentence-active" if is_active else "qd-sentence-inactive"
-        transcript_html_parts.append(f'<div class="qd-sentence-row {active_class}"><span class="qd-timestamp">{timestamp_label}</span><span class="qd-sentence-text">{text}</span></div>')
+        transcript_html_parts.append(
+            f'<div class="qd-sentence-row {active_class}">'
+            f'<span class="qd-timestamp">{timestamp_label}</span>'
+            f'<span class="qd-sentence-text">{text}</span>'
+            f'</div>'
+        )
 
     transcript_html_parts.append('</div>')
     st.markdown("".join(transcript_html_parts), unsafe_allow_html=True)
@@ -480,7 +659,12 @@ def _render_transcript_section(sentences: list):
                 st.session_state["qd_active_sentence"] = active_idx - 1
                 st.rerun()
     with nav_col2:
-        st.markdown(f'<div class="qd-sentence-progress"><span class="qd-sentence-progress-label">Câu {active_idx + 1}/{len(sentences)}</span></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="qd-sentence-progress">'
+            f'<span class="qd-sentence-progress-label">Câu {active_idx + 1}/{len(sentences)}</span>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
     with nav_col3:
         if active_idx < len(sentences) - 1:
             if st.button("Next →", key="qd_next_sent", use_container_width=True):
@@ -537,11 +721,11 @@ def _render_quiz_section(quiz_data: list, episode_id: str, user_id: str, audio_s
         unsafe_allow_html=True
     )
 
-    # Progress bar câu hỏi gọn gàng
     st.markdown(
         f'<div class="qd-quiz-progress">'
-        f'<div class="qd-quiz-progress-bar"><div class="qd-quiz-progress-fill" style="width:{int(((current_q_idx)/total_q)*100)}%"></div></div>'
-        f'</div>',
+        f'<div class="qd-quiz-progress-bar">'
+        f'<div class="qd-quiz-progress-fill" style="width:{int(((current_q_idx)/total_q)*100)}%"></div>'
+        f'</div></div>',
         unsafe_allow_html=True
     )
 
@@ -549,7 +733,6 @@ def _render_quiz_section(quiz_data: list, episode_id: str, user_id: str, audio_s
 
     current_answer = st.session_state["qd_user_answers"].get(str(q_num))
 
-    # Toàn bộ khối đáp án nằm trong container định danh để dễ can thiệp CSS
     st.markdown('<div class="qd-quiz-options-container">', unsafe_allow_html=True)
 
     for opt_key in ["A", "B", "C", "D"]:
@@ -558,8 +741,6 @@ def _render_quiz_section(quiz_data: list, episode_id: str, user_id: str, audio_s
             continue
 
         is_selected = (current_answer == opt_key)
-
-        # Text sạch không chứa icon radio dư thừa
         btn_label = f"{opt_key}: {opt_text}"
         btn_type = "primary" if is_selected else "secondary"
 
@@ -706,10 +887,21 @@ def _render_quiz_results(quiz_data: list, supabase_client, episode_id: str, user
 def render_quiz_detail_page(supabase_client=None, user_id: str = None):
     """
     Màn hình chính Quiz Detail: Audio Player + Transcript + Quiz.
+
+    FIX v20260610 — Kiến trúc dual-fragment:
+        render_quiz_detail_page() chỉ làm 3 việc:
+          1. Back button (app-level)
+          2. Load data (audio_url, sentences, quiz_data)
+          3. Gọi 2 fragment độc lập:
+             - _render_audio_player()       ← @st.fragment (player tự quản lý)
+             - _render_interactive_section() ← @st.fragment (transcript + quiz)
+
+        Khi user click đáp án → chỉ fragment interactive re-run.
+        Fragment player KHÔNG được trigger → iframe sống sót → audio tiếp tục.
+        Đây là cách duy nhất đảm bảo iframe không bị Streamlit destroy.
     """
     logger.info("🎬 quiz_detail_view: render_quiz_detail_page() — START.")
 
-    # Inject CSS tầng Style độc lập của màn hình này
     inject_quiz_detail_css()
 
     selected_episode = st.session_state.get("selected_episode", {})
@@ -722,10 +914,26 @@ def render_quiz_detail_page(supabase_client=None, user_id: str = None):
             st.rerun()
         return
 
-    # Back Navigation Button
+    current_episode_id = selected_episode.get("id", "")
+
+    # Guard: episode_id thay đổi → xóa cache player cũ để không phát nhầm audio
+    last_rendered_ep = st.session_state.get("qd_last_rendered_episode_id")
+    if last_rendered_ep and last_rendered_ep != current_episode_id:
+        st.session_state.pop(f"qd_player_html_{last_rendered_ep}", None)
+        st.session_state.pop(f"qd_audio_url_{last_rendered_ep}", None)
+        logger.info(f"🧹 quiz_detail_view: Cleared stale player cache (old_ep={last_rendered_ep})")
+
+    st.session_state["qd_last_rendered_episode_id"] = current_episode_id
+
+    # Back Navigation Button — nằm ngoài fragment, dùng st.rerun() toàn trang
     if st.button("← Your Podcast Library", key="qd_back_btn"):
-        for key in ["qd_active_sentence", "qd_show_transcript", "qd_user_answers",
-                    "qd_submitted", "qd_current_question", "qd_quiz_start_time"]:
+        st.session_state.pop(f"qd_player_html_{current_episode_id}", None)
+        st.session_state.pop(f"qd_audio_url_{current_episode_id}", None)
+        for key in [
+            "qd_active_sentence", "qd_show_transcript", "qd_user_answers",
+            "qd_submitted", "qd_current_question", "qd_quiz_start_time",
+            "qd_last_rendered_episode_id"
+        ]:
             st.session_state.pop(key, None)
         st.session_state["current_page"] = "Show Detail"
         st.rerun()
@@ -735,25 +943,21 @@ def render_quiz_detail_page(supabase_client=None, user_id: str = None):
         supabase_client=supabase_client
     )
 
-    # 1. Audio Player
+    # Đảm bảo show info (title + cover_image) luôn có từ DB
+    selected_show = _load_show_info(episode=selected_episode, supabase_client=supabase_client)
+
+    # 1. Audio Player — trong @st.fragment riêng, không bị re-render khi quiz/transcript rerun
     st.markdown('<div class="qd-player-section">', unsafe_allow_html=True)
     _render_audio_player(audio_url=audio_url, episode=selected_episode, show=selected_show)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # 2. Transcript Section
-    st.markdown('<div class="qd-transcript-section">', unsafe_allow_html=True)
-    _render_transcript_section(sentences)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # 3. Quiz Section
-    st.markdown('<div class="qd-quiz-section">', unsafe_allow_html=True)
-    _render_quiz_section(
+    # 2 + 3. Transcript + Quiz — TRONG fragment → partial rerun, audio player an toàn
+    _render_interactive_section(
+        sentences=sentences,
         quiz_data=quiz_data,
         episode_id=episode_id,
-        user_id=user_id or "",
-        audio_start_time=0.0,
+        user_id=user_id,
         supabase_client=supabase_client
     )
-    st.markdown('</div>', unsafe_allow_html=True)
 
     logger.info("🎬 quiz_detail_view: render_quiz_detail_page() — DONE.")
