@@ -198,8 +198,8 @@ def render_dashboard_screen(user_analytics_data=None):
         # --- DANH SÁCH SHOWS — render từng item riêng biệt ---
         if not recent_history:
             st.markdown(
-                '<div style="color:#475569; font-size:13px; padding:12px 4px;">'
-                '📭 Bạn chưa học bài nào. Hãy bắt đầu ngay!</div>',
+                '<div style="color:#FCD34D; font-size:13px; padding:12px 4px;">'
+                '📭 You have not studied any lessons yet. Click on Discovery to start now!</div>',
                 unsafe_allow_html=True
             )
         else:

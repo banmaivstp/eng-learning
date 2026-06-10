@@ -5,6 +5,16 @@
     "data_type": "date"
   },
   {
+    "table_name": "shows",
+    "column_name": "id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "shows",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
     "table_name": "episodes",
     "column_name": "id",
     "data_type": "uuid"
@@ -76,22 +86,7 @@
   },
   {
     "table_name": "users_profile",
-    "column_name": "id",
-    "data_type": "uuid"
-  },
-  {
-    "table_name": "users_profile",
     "column_name": "last_sign_in_at",
-    "data_type": "timestamp with time zone"
-  },
-  {
-    "table_name": "shows",
-    "column_name": "id",
-    "data_type": "uuid"
-  },
-  {
-    "table_name": "shows",
-    "column_name": "created_at",
     "data_type": "timestamp with time zone"
   },
   {
@@ -111,11 +106,11 @@
   },
   {
     "table_name": "profiles",
-    "column_name": "avatar_url",
+    "column_name": "id",
     "data_type": "text"
   },
   {
-    "table_name": "user_streaks",
+    "table_name": "learning_history",
     "column_name": "user_id",
     "data_type": "text"
   },
@@ -135,18 +130,18 @@
     "data_type": "text"
   },
   {
-    "table_name": "learning_history",
-    "column_name": "user_id",
-    "data_type": "text"
-  },
-  {
-    "table_name": "profiles",
-    "column_name": "id",
-    "data_type": "text"
-  },
-  {
     "table_name": "profiles",
     "column_name": "email",
+    "data_type": "text"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "full_name",
+    "data_type": "text"
+  },
+  {
+    "table_name": "profiles",
+    "column_name": "avatar_url",
     "data_type": "text"
   },
   {
@@ -165,8 +160,13 @@
     "data_type": "text"
   },
   {
-    "table_name": "profiles",
-    "column_name": "full_name",
+    "table_name": "user_streaks",
+    "column_name": "user_id",
+    "data_type": "text"
+  },
+  {
+    "table_name": "users_profile",
+    "column_name": "id",
     "data_type": "text"
   }
 ]
