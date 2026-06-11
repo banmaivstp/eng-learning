@@ -25,6 +25,10 @@ FIX v20260610.2 — Click đáp án bị mất button hoặc click 2 lần:
     - Sử dụng callback functions thay vì xử lý trực tiếp trong st.button
     - Thêm episode_id vào key của mọi button để tránh conflict
     - Dùng st.rerun() sau callback để force fragment refresh
+
+FIX v20260611 — Audio player bị đơ/reset duration về 0 sau khi Submit:
+    - Xóa cache player khi Submit hoặc Retry để force nạp lại Audio Element hoàn toàn mới.
+    - Đưa con trỏ phát audio về lại từ đầu (0:00) với đầy đủ metadata duration.
 """
 
 import streamlit as st
@@ -538,6 +542,9 @@ def _on_submit(quiz_data: list, episode_id: str, user_id: str, supabase_client):
     st.session_state["qd_correct"] = correct
     st.session_state["qd_submitted"] = True
 
+    # FIX: Chủ động xóa cache HTML player để khi rerun fragment player sẽ khởi tạo lại phần tử Audio sạch hoàn toàn, tránh đơ duration
+    st.session_state.pop(f"qd_player_html_{episode_id}", None)
+
     if user_id and episode_id and supabase_client:
         try:
             from modules.database import save_learning_history
@@ -554,13 +561,16 @@ def _on_submit(quiz_data: list, episode_id: str, user_id: str, supabase_client):
     st.balloons()
 
 
-def _on_retry():
+def _on_retry(episode_id: str):
     """Callback khi click Làm lại"""
     st.session_state["qd_user_answers"] = {}
     st.session_state["qd_submitted"] = False
     st.session_state["qd_current_question"] = 0
     st.session_state["qd_quiz_start_time"] = time.time()
-    logger.debug("🔄 Retry quiz: reset all states")
+    
+    # FIX: Xóa tiếp cache player khi người dùng muốn làm lại từ đầu
+    st.session_state.pop(f"qd_player_html_{episode_id}", None)
+    logger.debug("🔄 Retry quiz: reset all states and player cache")
 
 
 # =====================================================
@@ -584,7 +594,7 @@ def _render_audio_player(audio_url: str, episode: dict, show: dict):
     cache_key = f"qd_player_html_{episode_id}"
 
     if cache_key not in st.session_state:
-        logger.debug(f"🎵 quiz_detail_view: Building player...")
+        logger.debug(f"🎵 quiz_detail_view: Re-building clean player for episode={episode_id}...")
         player_html = _build_player_html(audio_url=_audio_url, episode=_episode, show=_show)
         st.session_state[cache_key] = player_html
     else:
@@ -858,11 +868,13 @@ def _render_quiz_results(quiz_data: list, episode_id: str, user_id: str, supabas
             unsafe_allow_html=True
         )
 
+    # Sửa callback tại đây để truyền thêm episode_id vào nhằm dọn dẹp cache đúng mục tiêu
     st.button(
         "🔄 Làm lại", 
         key=f"qd_retry_btn_{episode_id}", 
         use_container_width=True,
-        on_click=_on_retry
+        on_click=_on_retry,
+        args=(episode_id,)
     )
 
 
